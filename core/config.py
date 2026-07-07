@@ -61,3 +61,51 @@ def groq_key_status() -> tuple[bool, str]:
             "Get a free key: https://console.groq.com/keys"
         )
     return True, ""
+
+
+# Models Groq currently serves for free, newest/most capable first.
+GROQ_MODELS = (
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "openai/gpt-oss-20b",
+    "gemma2-9b-it",
+)
+
+
+def save_settings(
+    api_key: str | None = None,
+    model: str | None = None,
+    max_jobs: int | None = None,
+) -> None:
+    """Persist settings back to .env, preserving unrelated keys and comments."""
+    updates: dict[str, str] = {}
+    if api_key is not None:
+        updates["GROQ_API_KEY"] = api_key.strip()
+    if model is not None and model.strip():
+        updates["GROQ_MODEL"] = model.strip()
+    if max_jobs is not None:
+        updates["MAX_JOBS_TO_SCORE"] = str(max(1, int(max_jobs)))
+    if not updates:
+        return
+
+    lines: list[str] = []
+    if ENV_FILE.is_file():
+        lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in updates:
+                out.append(f"{key}={updates[key]}")
+                seen.add(key)
+                continue
+        out.append(line)
+    for key, value in updates.items():
+        if key not in seen:
+            out.append(f"{key}={value}")
+
+    ENV_FILE.write_text("\n".join(out) + "\n", encoding="utf-8")
+    load_env()  # refresh os.environ immediately

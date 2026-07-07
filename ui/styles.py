@@ -35,6 +35,29 @@ LOG_BG = "#0C0C0E"
 INFO_BORDER = "#52525B"
 INFO_BG = "#1A1A1D"
 
+# Gap (missing skills) chips
+GAP_BG = "rgba(251, 191, 36, 0.12)"
+GAP_TEXT = "#FCD34D"
+
+# NEW badge + accents
+NEW_BG = "rgba(96, 165, 250, 0.16)"
+NEW_TEXT = "#93C5FD"
+DANGER = "#F87171"
+DANGER_BG = "rgba(248, 113, 113, 0.12)"
+STAR = "#FBBF24"
+RECOMMENDED_TEXT = "#6EE7B7"
+
+
+def verdict_colors(score: int) -> tuple[str, str]:
+    """(background, text) for a score's verdict pill."""
+    if score >= 80:
+        return "rgba(52, 211, 153, 0.14)", "#6EE7B7"
+    if score >= 60:
+        return "rgba(96, 165, 250, 0.16)", "#93C5FD"
+    if score >= 40:
+        return "rgba(251, 191, 36, 0.14)", "#FCD34D"
+    return "rgba(148, 148, 158, 0.14)", "#A1A1AA"
+
 FONT_FAMILY = '"Segoe UI", "Inter", system-ui, sans-serif'
 
 APP_STYLESHEET = f"""

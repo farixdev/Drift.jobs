@@ -12,6 +12,9 @@ except ImportError:
 
 
 class IndeedScraper(BaseScraper):
+    label = "Indeed"
+    needs_browser = True
+
     def search(self, keywords: list[str], location: str) -> list[RawJob]:
         if uc is None:
             return []

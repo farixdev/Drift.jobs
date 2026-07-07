@@ -13,63 +13,74 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10+-black?style=flat-square)
 ![PyQt5](https://img.shields.io/badge/PyQt5-5.15-black?style=flat-square)
-![Gemini](https://img.shields.io/badge/Gemini_2.0_Flash-free-black?style=flat-square)
+![Groq](https://img.shields.io/badge/Groq-Llama_3-black?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-black?style=flat-square)
 
 </div>
 
 ---
 
-**drift** is a minimal desktop app that reads your resume, scrapes job boards, and uses AI to score every listing against your profile — then surfaces only the ones worth your time.
+**drift** reads your resume, scrapes job boards in parallel, and scores every
+listing against your profile — then surfaces only the ones worth your time,
+tells you *why* each one fits (and what you're missing), and drafts a tailored
+cover letter in one click.
 
 Upload your CV. Pick your sources. Set a match threshold. Let it run.
+
+> **No API key required.** Drift scores every job locally out of the box. Add a
+> free [Groq](https://console.groq.com/keys) key in **⚙ Settings** for sharper
+> AI scoring and AI-written cover letters.
 
 ---
 
 ## How it works
 
 ```
-your resume (PDF/DOCX)
+your resume (PDF/DOC/DOCX)
         │
         ▼
-  AI extracts skills,
-  keywords, location
+  extract skills, keywords, location
+  (local, or Groq if a key is set)
         │
         ▼
-  scrapes LinkedIn,
-  Indeed, Remotive,
-  We Work Remotely
+  scrape sources in parallel
+  RemoteOK · Remotive · Arbeitnow · …
         │
         ▼
-  Gemini scores each
-  job against your CV
+  hybrid scoring
+  free local baseline for every job,
+  Groq refines the top matches
         │
         ▼
-  only jobs above your
-  threshold appear — 
-  one click to apply
+  results sorted by fit — matched vs
+  missing skills, cover letters,
+  save / apply / dismiss, live filters
 ```
 
 ---
 
 ## Features
 
-- **Smart resume parsing** — extracts skills, experience, and location from any PDF or DOCX
-- **Multi-source scraping** — LinkedIn, Indeed, Remotive, We Work Remotely (mix and match)
-- **AI-powered scoring** — Gemini 2.0 Flash rates each job 0–100 against your exact profile
-- **Match threshold slider** — only see jobs above your minimum (e.g. 70%+)
-- **Live scan log** — watch the pipeline run step by step in real time
-- **One-click apply** — opens the job listing directly in your browser
-- **Export report** — save your results as a clean HTML file
-- **Duplicate filtering** — SQLite tracks seen jobs so you never see the same listing twice
-
----
-
-## Screenshots
-
-> Screen 1 — Setup · Screen 2 — Live scan · Screen 3 — Results
-
-*(add screenshots here)*
+- **Works with zero setup** — local, word-boundary skill matching scores every
+  job with no key, no quota, no cloud.
+- **Hybrid AI scoring** — the free local pass ranks everything; Groq (Llama 3)
+  refines the most promising matches for a sharper 0–100 fit score.
+- **Gap analysis** — every card shows the skills you **match** *and* the skills
+  the job wants that you're **missing**.
+- **One-click cover letters** — AI drafts a tailored, editable letter per job;
+  copy it or save it as `.txt`. Falls back to a local template with no key.
+- **Reliable, key-free sources** — RemoteOK, Remotive, and Arbeitnow are JSON
+  APIs that return *real job descriptions* and don't get blocked. LinkedIn,
+  Indeed, ZipRecruiter, web search, and any custom `/jobs` page are also there.
+- **Parallel scraping** — sources run concurrently; a scan takes seconds, and a
+  **Stop** button lets you score what's found so far at any moment.
+- **Job states that stick** — **Save**, mark **Applied**, or **Dismiss** a job.
+  Dismissed jobs never come back, and previously-seen jobs are flagged **NEW**.
+- **Live filtering** — drag the match slider, search by title/company/skill, or
+  filter by All / New / Saved / Applied — instantly, without re-scanning.
+- **Export anywhere** — CSV, JSON, or a polished shareable HTML report.
+- **In-app settings** — set your Groq key, model, and scoring depth from a
+  dialog; it writes back to `.env` for you.
 
 ---
 
@@ -78,30 +89,19 @@ your resume (PDF/DOCX)
 ### Prerequisites
 
 - Python 3.10+
-- Google Chrome installed (for Selenium scrapers)
-- A free Gemini API key → [get one here](https://aistudio.google.com)
+- *(optional)* Google Chrome — only for the LinkedIn / Indeed scrapers
+- *(optional)* A free Groq API key → [console.groq.com/keys](https://console.groq.com/keys)
 
 ### Installation
 
 ```bash
-# clone the repo
-git clone https://github.com/yourusername/drift-jobs.git
-cd drift-jobs
+git clone https://github.com/farixdev/Drift-JobFinder.git
+cd Drift-JobFinder
 
-# create a virtual environment
-python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
+python -m venv .venv
+.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 
-# install dependencies
 pip install -r requirements.txt
-```
-
-### Configuration
-
-Create a `.env` file in the root directory:
-
-```env
-GEMINI_API_KEY=your_api_key_here
 ```
 
 ### Run
@@ -110,16 +110,24 @@ GEMINI_API_KEY=your_api_key_here
 python main.py
 ```
 
+That's it — Drift runs immediately with local scoring. To enable AI scoring and
+cover letters, click **⚙ Settings** in the app and paste a free Groq key (or
+create a `.env` with `GROQ_API_KEY=...`).
+
 ---
 
 ## Usage
 
-1. **Upload your resume** — drag and drop a `.pdf` or `.docx` file onto the upload zone
-2. **Select job sources** — pick which boards to scrape (Remotive is fastest, no login needed)
-3. **Set your threshold** — drag the slider to your minimum match score (70% is a good start)
-4. **Hit "Start scanning"** — watch the live log as drift works through each step
-5. **Review results** — job cards sorted by match score, with matched skills highlighted
-6. **Apply** — click the apply button on any card to open the listing in your browser
+1. **Upload your resume** — drag a `.pdf` / `.doc` / `.docx` onto the drop zone.
+2. **Pick sources** — the ★ recommended ones (RemoteOK, Remotive, Arbeitnow) are
+   on by default and need no login. Or paste a company `/jobs` URL.
+3. **Set your threshold** — the minimum match score you care about.
+4. **Start scanning** — watch sources stream in live; hit **Stop** any time.
+5. **Review** — cards are sorted by fit, with matched (green) and missing
+   (amber) skills. Drag the slider or search to refine on the fly.
+6. **Act** — **Apply** opens the listing, **✎ Cover letter** drafts one,
+   **★ Save** / **✓ Applied** / **✕ Dismiss** track your pipeline.
+7. **Export** — CSV, JSON, or an HTML report.
 
 ---
 
@@ -127,28 +135,39 @@ python main.py
 
 ```
 drift/
-├── main.py                  # entry point
+├── main.py                     # entry point
+├── models.py                   # Job model + states + fingerprinting
 ├── ui/
-│   ├── app.py               # main window, screen manager
-│   ├── screen_setup.py      # screen 1: upload + config
-│   ├── screen_scan.py       # screen 2: live log
-│   └── screen_results.py    # screen 3: job cards
+│   ├── app.py                  # window + screen manager
+│   ├── screen_setup.py         # upload + sources + threshold
+│   ├── screen_scan.py          # live parallel scan log + Stop
+│   ├── screen_results.py       # cards, filters, actions, export
+│   ├── dialogs.py              # Settings + Cover letter dialogs
+│   ├── worker.py               # concurrent, cancellable scan pipeline
+│   ├── widgets.py              # top bar, chips, source rows
+│   └── styles.py               # dark design tokens
 ├── core/
-│   ├── parser.py            # resume text extraction
-│   ├── ai_engine.py         # Gemini — skill extraction + scoring
-│   ├── matcher.py           # score jobs, filter by threshold
+│   ├── config.py               # .env read/write, settings
+│   ├── parser.py               # PDF/DOC/DOCX text extraction
+│   ├── ai_engine.py            # Groq: parse, score, cover letters
+│   ├── local_engine.py         # offline scoring + gap analysis
+│   ├── matcher.py              # hybrid local + AI ranking
+│   ├── report.py               # CSV / JSON / HTML export
+│   ├── skills_db.py            # skill vocabulary
 │   └── scraper/
-│       ├── base.py          # base scraper class
-│       ├── linkedin.py      # LinkedIn scraper (Selenium)
-│       ├── indeed.py        # Indeed scraper (Selenium)
-│       ├── remotive.py      # Remotive (open API, no Selenium)
-│       └── wwr.py           # We Work Remotely scraper
-├── db/
-│   └── jobs.db              # SQLite job store
-├── templates/
-│   └── report.html          # export template
-├── requirements.txt
-└── .env.example
+│       ├── remoteok.py         # ★ JSON API, no key
+│       ├── remotive.py         # ★ JSON API, no key
+│       ├── arbeitnow.py        # ★ JSON API, no key
+│       ├── wwr.py              # We Work Remotely
+│       ├── linkedin.py         # Selenium (needs Chrome)
+│       ├── indeed.py           # Selenium (needs Chrome)
+│       ├── ziprecruiter.py     # best-effort HTML
+│       ├── internet_bing.py    # web search
+│       ├── internet_google.py  # web search
+│       ├── custom.py           # any company /jobs page
+│       └── util.py             # HTML clean, dates, salary
+├── db/                         # SQLite job store + states
+└── templates/report.html       # HTML export template
 ```
 
 ---
@@ -159,54 +178,31 @@ drift/
 |---|---|
 | Language | Python 3.10+ |
 | UI | PyQt5 |
-| Resume parsing | pdfplumber · python-docx |
-| AI / scoring | Google Gemini 2.0 Flash (free tier) |
-| Scraping | Selenium · undetected-chromedriver |
+| Resume parsing | pdfplumber · pymupdf · pypdf · python-docx |
+| AI / scoring | Groq — Llama 3 (free tier) · local fallback |
+| Scraping | requests · BeautifulSoup · Selenium (optional) |
 | Storage | SQLite3 |
-| Export | Jinja2 |
+| Export | Jinja2 · CSV · JSON |
 
 ---
 
-## Gemini free tier limits
+## Groq free tier
 
-drift uses **Gemini 2.0 Flash** which is completely free with no credit card required.
-
-| | |
-|---|---|
-| Requests per minute | 60 |
-| Requests per day | 1,500 |
-| Cost | $0 |
-
-For a typical scan of 50 jobs, drift makes roughly 55 API calls (1 for resume parsing + ~1 per job for scoring). Well within the free limits.
+Drift defaults to **Llama 3.1 8B Instant** — fast, free, generous limits. Switch
+to **Llama 3.3 70B** in Settings for even sharper judgment. A typical scan of
+~50 jobs makes ~2 API calls (one to parse the resume, one to batch-score the top
+matches), so you stay well inside the free tier — and with no key at all, Drift
+still scores every job locally.
 
 ---
 
 ## Roadmap
 
-- [ ] Email digest — daily summary sent to your inbox
-- [ ] Saved searches — re-run the same config automatically
-- [ ] Cover letter generator — AI drafts a tailored cover letter per job
-- [ ] Dark mode
-- [ ] More job sources (Glassdoor, Otta, Y Combinator jobs)
-
----
-
-## Known limitations
-
-- **LinkedIn scraping** is fragile — LinkedIn actively detects bots. If you get blocked, try adding a delay or using a different IP. The app uses `undetected-chromedriver` to reduce detection.
-- **Job descriptions** aren't always available from scraped cards alone — scoring quality improves when the full JD text is fetched.
-- **Location filtering** depends on what's in your resume — if no location is found, searches default to remote.
-
----
-
-## Contributing
-
-Pull requests are welcome. For major changes, open an issue first.
-
-```bash
-# run in dev mode
-python main.py --dev
-```
+- [ ] Email digest — daily summary of new high matches
+- [ ] Saved profiles — named resume + source presets, re-run on a schedule
+- [ ] Auto-fetch full JDs for Selenium sources to sharpen scoring
+- [ ] Resume gap coach — "learn these 3 skills to unlock 12 more jobs"
+- [ ] More sources (Otta, Y Combinator, Wellfound)
 
 ---
 

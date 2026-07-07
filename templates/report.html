@@ -34,6 +34,12 @@
       background: #ECFDF5;
       color: #065F46;
     }
+    .tag.gap { background: #FEF3C7; color: #92400E; }
+    .verdict {
+      display: inline-block; font-size: 11px; font-weight: 500;
+      padding: 2px 8px; border-radius: 20px; background: #EEF2FF; color: #3730A3;
+      margin-left: 8px;
+    }
     .summary { font-size: 12px; color: #6F6E69; margin-top: 8px; }
     a.apply {
       display: inline-block;
@@ -54,11 +60,14 @@
     {% for job in jobs %}
     <div class="card">
       <span class="score">{{ job.score }}%</span>
-      <div class="title">{{ job.title }}</div>
-      <div class="sub">{{ job.company }} · {{ job.location }}{% if job.job_type %} · {{ job.job_type }}{% endif %}</div>
+      <div class="title">{{ job.title }}{% if job.verdict %}<span class="verdict">{{ job.verdict }}</span>{% endif %}</div>
+      <div class="sub">{{ job.company }} · {{ job.location }}{% if job.job_type %} · {{ job.job_type }}{% endif %}{% if job.salary %} · {{ job.salary }}{% endif %}{% if job.posted %} · {{ job.posted }}{% endif %}</div>
       <div class="tags">
         {% for skill in job.matched_skills %}
         <span class="tag">{{ skill }}</span>
+        {% endfor %}
+        {% for skill in job.missing_skills %}
+        <span class="tag gap">− {{ skill }}</span>
         {% endfor %}
       </div>
       {% if job.summary %}<p class="summary">{{ job.summary }}</p>{% endif %}

@@ -10,6 +10,16 @@ from core.config import get_groq_api_key, get_groq_model
 _client: OpenAI | None = None
 
 
+def has_api_key() -> bool:
+    return bool(get_groq_api_key())
+
+
+def reset_client() -> None:
+    """Drop the cached client so a new API key / model takes effect."""
+    global _client
+    _client = None
+
+
 def _get_client() -> OpenAI:
     global _client
     if _client is not None:
@@ -35,7 +45,11 @@ def _parse_json(text: str) -> Any:
     return json.loads(text)
 
 
-def _chat(prompt: str) -> str:
+def _chat(
+    prompt: str,
+    system: str = "You return only valid JSON. No markdown.",
+    temperature: float = 0.2,
+) -> str:
     delay = 3
     last_error: Exception | None = None
     for attempt in range(4):
@@ -43,13 +57,10 @@ def _chat(prompt: str) -> str:
             response = _get_client().chat.completions.create(
                 model=get_groq_model(),
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "You return only valid JSON. No markdown.",
-                    },
+                    {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.2,
+                temperature=temperature,
             )
             return (response.choices[0].message.content or "").strip()
         except Exception as exc:
@@ -119,17 +130,30 @@ def score_jobs_batch(
             "id": i,
             "title": j.get("title", ""),
             "company": j.get("company", ""),
-            "description": (j.get("description") or j.get("title") or "")[:800],
+            "description": (j.get("description") or j.get("title") or "")[:1200],
         }
         for i, j in enumerate(jobs)
     ]
 
     prompt = f"""
-Score each job vs this resume. Return ONLY a JSON array:
-[{{"id": 0, "score": 85, "matched_skills": ["Python"], "summary": "one sentence"}}]
+You are a precise technical recruiter. Score how well each job fits this
+candidate, 0-100. Use this rubric:
+- 85-100: meets nearly all core requirements, clear fit
+- 65-84: meets most core requirements or strongly transferable
+- 40-64: partial / transferable fit, some key gaps
+- 15-39: weak fit, mostly different domain
+- 0-14: unrelated role
+Be discriminating — most jobs should not be 85+. Return ONLY a JSON array, one object per job:
+[{{"id": 0, "score": 85, "matched_skills": ["Python","AWS"],
+   "missing_skills": ["Kubernetes"], "verdict": "Strong match",
+   "summary": "one specific sentence on why it fits or doesn't"}}]
 
-Resume skills: {skills[:20]}
-Resume:
+verdict must be one of: "Strong match", "Good match", "Partial match", "Weak match".
+matched_skills = candidate skills the job needs. missing_skills = skills the job
+asks for that the candidate lacks (max 6).
+
+Candidate skills: {skills[:20]}
+Candidate resume:
 {resume_text[:1500]}
 
 Jobs:
@@ -170,6 +194,40 @@ def score_job(
         return {
             "score": int(item.get("score", 0)),
             "matched_skills": item.get("matched_skills", []),
+            "missing_skills": item.get("missing_skills", []),
+            "verdict": item.get("verdict", ""),
             "summary": item.get("summary", ""),
         }
     return {"score": 0, "matched_skills": [], "summary": "No match."}
+
+
+_COVER_SYSTEM = (
+    "You are an expert career writer. You write concise, specific, confident "
+    "cover letters in plain prose. No markdown, no placeholders like [Company], "
+    "no clichés. 3 short paragraphs, under 220 words."
+)
+
+
+def generate_cover_letter(
+    resume_text: str,
+    title: str,
+    company: str,
+    description: str = "",
+    tone: str = "professional",
+) -> str:
+    """Draft a tailored cover letter. Requires an API key; caller handles fallback."""
+    prompt = f"""
+Write a {tone} cover letter for this candidate applying to the role below.
+Ground it in the candidate's real experience and the job's actual requirements.
+Open with genuine interest, make the middle paragraph prove fit with 2-3 concrete
+skills/experiences, and close with a call to action. Sign off as the candidate.
+
+ROLE: {title}
+COMPANY: {company or "the company"}
+JOB DESCRIPTION:
+{(description or title)[:1500]}
+
+CANDIDATE RESUME:
+{resume_text[:2500]}
+"""
+    return _chat(prompt, system=_COVER_SYSTEM, temperature=0.6).strip()

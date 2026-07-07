@@ -14,12 +14,14 @@ from PyQt5.QtWidgets import (
 )
 
 from core import parser
+from core.scraper import SOURCES
 from core.url_utils import InvalidJobsUrlError, normalize_jobs_url
 from ui import styles
 from ui.widgets import SourceCheckbox, TopBar
 
 
 class SetupScreen(QWidget):
+    # emits: resume_path, source_keys, threshold, resume_text, custom_url
     start_scan = pyqtSignal(str, list, int, str, str)
 
     def __init__(self, parent=None):
@@ -78,18 +80,17 @@ class SetupScreen(QWidget):
 
         grid = QGridLayout()
         grid.setSpacing(8)
-        self.sources = {
-            "LinkedIn": SourceCheckbox("LinkedIn", True),
-            "Indeed": SourceCheckbox("Indeed", True),
-            "Remotive": SourceCheckbox("Remotive", False),
-            "We Work Remotely": SourceCheckbox("We Work Remotely", False),
-            "ZipRecruiter": SourceCheckbox("ZipRecruiter", False),
-            "Search internet (Bing)": SourceCheckbox("Search internet (Bing)", False),
-            "Search internet (Google)": SourceCheckbox("Search internet (Google)", False),
-        }
-        keys = list(self.sources.keys())
-        for i, key in enumerate(keys):
-            grid.addWidget(self.sources[key], i // 2, i % 2)
+        # Keyed by scraper key; recommended (fast, key-free JSON) default ON.
+        self.sources: dict[str, SourceCheckbox] = {}
+        for i, src in enumerate(SOURCES):
+            box = SourceCheckbox(
+                src["label"],
+                checked=src["recommended"],
+                note=src["note"],
+                recommended=src["recommended"],
+            )
+            self.sources[src["key"]] = box
+            grid.addWidget(box, i // 2, i % 2)
         body.addLayout(grid)
         body.addSpacing(20)
 
@@ -182,7 +183,7 @@ class SetupScreen(QWidget):
         title.setStyleSheet(
             f"font-size:14px; font-weight:500; color:{styles.TEXT_PRIMARY}; border:none; background:transparent;"
         )
-        sub = QLabel("PDF, DOC, or DOCX · powered by Groq")
+        sub = QLabel("PDF, DOC, or DOCX · local + AI scoring")
         sub.setAlignment(Qt.AlignCenter)
         sub.setStyleSheet(
             f"font-size:12px; color:{styles.TEXT_TERTIARY}; border:none; background:transparent;"

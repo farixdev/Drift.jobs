@@ -12,6 +12,9 @@ except ImportError:
 
 
 class LinkedInScraper(BaseScraper):
+    label = "LinkedIn"
+    needs_browser = True
+
     def search(self, keywords: list[str], location: str) -> list[RawJob]:
         if uc is None:
             return []

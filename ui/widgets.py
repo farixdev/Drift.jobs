@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -11,7 +12,19 @@ from PyQt5.QtWidgets import (
 from ui import styles
 
 
+def chip(text: str, bg: str, fg: str) -> QLabel:
+    """A small rounded pill label (skill tags, badges, verdicts)."""
+    lbl = QLabel(text)
+    lbl.setStyleSheet(
+        f"background:{bg}; color:{fg}; font-size:11px; font-weight:500;"
+        f" padding:2px 8px; border-radius:10px;"
+    )
+    return lbl
+
+
 class TopBar(QFrame):
+    settings_clicked = pyqtSignal()
+
     def __init__(self, active_step: int = 0, parent=None):
         super().__init__(parent)
         self.setObjectName("topbar")
@@ -43,6 +56,19 @@ class TopBar(QFrame):
             self._dots.append(dot)
             dots_wrap.addWidget(dot)
         layout.addLayout(dots_wrap)
+
+        self.settings_btn = QPushButton("⚙")
+        self.settings_btn.setCursor(Qt.PointingHandCursor)
+        self.settings_btn.setFixedSize(28, 28)
+        self.settings_btn.setToolTip("Settings")
+        self.settings_btn.setStyleSheet(
+            f"QPushButton {{ background:transparent; border:none; font-size:15px;"
+            f" color:{styles.TEXT_TERTIARY}; padding:0; }}"
+            f"QPushButton:hover {{ color:{styles.TEXT_PRIMARY}; }}"
+        )
+        self.settings_btn.clicked.connect(self.settings_clicked.emit)
+        layout.addSpacing(8)
+        layout.addWidget(self.settings_btn)
         self.set_active_step(active_step)
 
     def set_active_step(self, step: int) -> None:
@@ -58,10 +84,13 @@ class TopBar(QFrame):
 class SourceCheckbox(QFrame):
     toggled_on = pyqtSignal(bool)
 
-    def __init__(self, label: str, checked: bool = False, parent=None):
+    def __init__(self, label: str, checked: bool = False, note: str = "",
+                 recommended: bool = False, parent=None):
         super().__init__(parent)
         self.setObjectName("SourceCheckbox")
         self._label_text = label
+        self._note = note
+        self._recommended = recommended
         self._on = checked
         self._enabled = True
         self.setCursor(Qt.PointingHandCursor)
@@ -77,7 +106,7 @@ class SourceCheckbox(QFrame):
 
     def _build_ui(self) -> None:
         self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(12, 10, 12, 10)
+        self._layout.setContentsMargins(12, 8, 12, 8)
         self._layout.setSpacing(8)
         self._dot = QFrame()
         self._dot.setFixedSize(14, 14)
@@ -86,9 +115,21 @@ class SourceCheckbox(QFrame):
         dot_lay = QVBoxLayout(self._dot)
         dot_lay.setContentsMargins(4, 4, 4, 4)
         dot_lay.addWidget(self._inner, 0, Qt.AlignCenter)
-        self._label = QLabel(self._label_text)
-        self._layout.addWidget(self._dot)
-        self._layout.addWidget(self._label)
+        self._layout.addWidget(self._dot, 0, Qt.AlignTop)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(1)
+        star = f' <span style="color:{styles.STAR}">★</span>' if self._recommended else ""
+        head = QLabel(f"{self._label_text}{star}")
+        head.setTextFormat(Qt.RichText)
+        self._label = head
+        text_col.addWidget(head)
+        if self._note:
+            note = QLabel(self._note)
+            note.setStyleSheet(f"color:{styles.TEXT_TERTIARY}; font-size:10px;")
+            self._note_label = note
+            text_col.addWidget(note)
+        self._layout.addLayout(text_col, 1)
         self._layout.addStretch()
 
     def mousePressEvent(self, event):

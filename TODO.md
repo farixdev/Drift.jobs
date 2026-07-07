@@ -1,37 +1,28 @@
-# TODO - Drift job scanner enhancements
+# TODO — Drift
 
-## Step 1 — Add Google source option in UI
-- [ ] Update `ui/screen_setup.py` to add checkbox: `Search internet (Google)` (default off)
+Everything from the original TODO (Google source, more jobs per source, better
+scan feedback) shipped in **2.0**. The pause/continue idea was replaced with a
+proper concurrent scan + Stop button. See `CHANGELOG.md`.
 
-## Step 2 — Implement Google scraper
-- [ ] Add `core/scraper/internet_google.py` (best-effort Google search HTML parsing to extract job-like links)
-- [ ] Register `google` scraper in `core/scraper/__init__.py`
+## Next up
 
-## Step 3 — Update source mapping
-- [ ] Update `ui/worker.py` `SOURCE_KEYS` to map `Search internet (Google)` -> `google`
+### Full JD fetch for browser sources
+- [ ] For LinkedIn/Indeed cards, fetch the detail page to get the real
+      description (currently only the title is available), so scoring is as
+      good as it is for the JSON API sources.
 
-## Step 4 — Scrape more jobs per source
-- [ ] Increase caps in `core/scraper/indeed.py` and `core/scraper/linkedin.py` (aim higher than 30)
-- [ ] Ensure Bing already returns up to 50; adjust if needed
+### Saved profiles + scheduling
+- [ ] Save a named preset (resume + sources + threshold).
+- [ ] Optional background re-run; notify on new high matches.
 
-## Step 5 — Add timed pause / continue-end flow
-- [ ] Modify `ui/worker.py` to track elapsed time and extracted job count
-- [ ] Add new signal(s) to UI for: `pause_prompt` with context (jobs found so far)
-- [ ] Implement modal in `ui/app.py` (or worker-safe mechanism) to block until user chooses continue/end
-- [ ] Target prompt time: ~3.30 minutes (3–4 minutes requirement)
-- [ ] If user selects End: proceed directly to scoring + results
+### Resume gap coach
+- [ ] Aggregate `missing_skills` across all matches → "learn X to unlock N more
+      jobs."
 
-## Step 6 — Improve scanning UI feedback
-- [ ] Update `ui/screen_scan.py` logs to show:
-  - which source is running
-  - Google query text
-  - extracted job count updates
-  - pause prompt status (continuing vs ending)
+### More sources
+- [ ] Otta, Y Combinator (Work at a Startup), Wellfound.
 
-## Step 7 — Validation
-- [ ] Verify checked boxes correspond to visited/scraped sources (log per source start/end + extracted count)
-- [ ] Verify goal: attempt 40–50 jobs per selected website/source when possible
-- [ ] Verify pause prompt appears after ~3.30 min during active scraping
-- [ ] Verify if user ends, scoring/matching starts immediately
-
-
+### Nice-to-haves
+- [ ] Per-source result counts as chips on the results header.
+- [ ] Sort options (newest, salary) in addition to best-match.
+- [ ] Email digest export.

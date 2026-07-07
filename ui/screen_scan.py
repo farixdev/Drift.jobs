@@ -1,11 +1,13 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ui import styles
 from ui.widgets import LogLine, ThinProgressBar, TopBar
 
 
 class ScanScreen(QWidget):
+    stop_clicked = pyqtSignal()
+
     LOG_KEYS = [
         "resume",
         "keywords",
@@ -59,15 +61,34 @@ class ScanScreen(QWidget):
         self.log_layout.setSpacing(8)
         body.addWidget(self.log_box, 1)
 
-        hint = QLabel("This usually takes 1–2 minutes")
+        hint = QLabel("Usually 20–60 seconds · sources run in parallel")
         hint.setAlignment(Qt.AlignCenter)
         hint.setStyleSheet(f"font-size:11px; color:{styles.TEXT_TERTIARY};")
         body.addWidget(hint)
+        body.addSpacing(8)
+
+        self.stop_btn = QPushButton("Stop & score what we have")
+        self.stop_btn.setCursor(Qt.PointingHandCursor)
+        self.stop_btn.setFixedHeight(34)
+        self.stop_btn.setStyleSheet(
+            f"QPushButton {{ font-size:13px; border:0.5px solid {styles.BORDER};"
+            f" border-radius:8px; background:transparent; color:{styles.TEXT_SECONDARY}; }}"
+            f"QPushButton:hover {{ background:{styles.LOG_BG}; color:{styles.TEXT_PRIMARY}; }}"
+        )
+        self.stop_btn.clicked.connect(self._on_stop)
+        body.addWidget(self.stop_btn)
 
         root.addWidget(shell, 1)
 
+    def _on_stop(self) -> None:
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setText("Finishing up…")
+        self.stop_clicked.emit()
+
     def reset(self, threshold: int) -> None:
         self._threshold = threshold
+        self.stop_btn.setEnabled(True)
+        self.stop_btn.setText("Stop & score what we have")
         self.progress.set_value(0)
         self.subtitle.setText("Based on your resume")
         while self.log_layout.count():
