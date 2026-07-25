@@ -192,3 +192,14 @@ SKILLS: tuple[str, ...] = (
     "teamwork",
     "problem solving",
 )
+
+# Boilerplate / soft skills that appear in almost every JD. Excluded from JD
+# requirement mining, missing-skills, and keyword generation so they don't cause
+# cross-domain false matches (a writer JD "matching" a developer resume).
+SOFT_SKILLS: frozenset = frozenset({
+    "communication", "teamwork", "leadership", "problem solving",
+    "project management", "technical writing", "documentation", "agile", "scrum",
+})
+
+# Hard technical skills only — the signal that actually indicates role fit.
+TECH_SKILLS: tuple = tuple(s for s in SKILLS if s not in SOFT_SKILLS)

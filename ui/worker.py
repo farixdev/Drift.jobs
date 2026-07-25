@@ -104,7 +104,8 @@ class ScanWorker(QThread):
             self.progress_signal.emit(80)
             use_llm = ai_engine.has_api_key()
             scored = matcher.score_all(
-                all_jobs, resume_text, skills=skills, use_llm=use_llm, log=self._log
+                all_jobs, resume_text, skills=skills, use_llm=use_llm,
+                keywords=keywords, log=self._log,
             )
 
             # Annotate new-vs-seen + persisted status, then remember them.

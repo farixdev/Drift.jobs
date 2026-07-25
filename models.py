@@ -30,6 +30,7 @@ class Job:
     job_type: str
     url: str
     source: str
+    description: str = ""
     matched_skills: List[str] = field(default_factory=list)
     missing_skills: List[str] = field(default_factory=list)
     score: int = 0

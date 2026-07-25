@@ -94,11 +94,27 @@ Resume:
 {resume_text[:3500]}
 """
     data = _parse_json(_chat(prompt))
-    return {
-        "skills": data.get("skills") or [],
-        "location": (data.get("location") or "Remote").strip(),
-        "keywords": data.get("keywords") or data.get("skills", [])[:3],
-    }
+    if not isinstance(data, dict):
+        data = {}
+
+    def _clean(value) -> list[str]:
+        out: list[str] = []
+        for item in value if isinstance(value, list) else []:
+            if isinstance(item, (str, int, float)):
+                s = str(item).strip()
+            elif isinstance(item, dict):
+                s = str(item.get("name") or item.get("skill") or "").strip()
+            else:
+                s = ""
+            if s:
+                out.append(s)
+        return out
+
+    skills = _clean(data.get("skills"))
+    keywords = _clean(data.get("keywords")) or skills[:3]
+    location = data.get("location")
+    location = (str(location).strip() if isinstance(location, (str, int, float)) else "") or "Remote"
+    return {"skills": skills, "location": location, "keywords": keywords}
 
 
 def extract_skills(resume_text: str) -> list[str]:

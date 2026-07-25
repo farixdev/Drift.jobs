@@ -8,82 +8,136 @@ import re
 from functools import lru_cache
 from typing import Any
 
-from core.skills_db import SKILLS
+from core.skills_db import TECH_SKILLS as SKILLS
 
-# Single/short tokens that produce false positives when scanned against raw job
-# text (e.g. the letter "r" or the word "go"). We still honour them when they
-# come from a resume's own curated skill list — just not when mining a JD.
-_AMBIGUOUS = {"r", "c", "d", "go", "a"}
+# Tokens that are also common English words: only count them in their canonical
+# (capitalised/acronym) form so the language "Go" never matches the verb "go".
+_PROSE = {"go": "Go", "r": "R", "c": "C", "d": "D", "a": "A", "rest": "REST"}
+
+# Generic role words that make a title relevant even without an exact skill hit.
+_ROLE_WORDS = (
+    "engineer", "developer", "backend", "frontend", "fullstack", "full-stack",
+    "full stack", "data", "devops", "designer", "scientist", "architect",
+    "analyst", "programmer", "sysadmin", "sre", "mobile", "cloud", "security",
+    "software", "machine learning",
+)
+_ROLE_WORDS_RE = re.compile(
+    r"(?i)(?<![a-z])(" + "|".join(re.escape(w) for w in _ROLE_WORDS) + r")(?![a-z])"
+)
 
 _LOCATION_RE = re.compile(
     r"(?i)\b(?:based in|located in|location[:\s]+)\s*"
-    r"([A-Za-z][A-Za-z\s,.'-]{2,60})"
+    r"([A-Za-z][A-Za-z\s,.'-]{2,40})"
 )
 _CITY_COUNTRY_RE = re.compile(
-    r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?,\s*[A-Z][a-z][A-Za-z\s]+)\b"
+    r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?,\s*[A-Z][a-z][A-Za-z]+)\b"
 )
 _REMOTE_RE = re.compile(r"(?i)\b(remote|work from home|wfh|hybrid)\b")
+
+# Words that look like "City, Region" captures but are really resume prose/headers.
+_LOC_BLOCK = {
+    "experience", "skills", "summary", "education", "projects", "objective",
+    "profile", "references", "work", "employment", "professional", "technical",
+    "contact", "languages", "certifications", "achievements", "interests",
+    "university", "college", "bachelor", "master", "responsibilities", "present",
+    "senior", "junior", "engineer", "manager", "developer", "lead", "director",
+    "analyst", "designer", "specialist", "consultant", "intern", "architect",
+}
+
+# Multi-letter acronyms whose canonical display form is all-caps.
+_ACRONYMS = {
+    "html", "http", "https", "json", "xml", "yaml", "toml", "ajax", "saas",
+    "paas", "iaas", "wcag", "grpc", "graphql", "restful", "oauth", "jwt",
+}
 
 _CITIES = (
     "Lahore", "Karachi", "Islamabad", "Rawalpindi", "London", "New York",
     "San Francisco", "Toronto", "Berlin", "Dubai", "Singapore", "Sydney",
-    "Mumbai", "Delhi", "Bangalore", "Amsterdam", "Dublin", "Austin", "Remote",
+    "Mumbai", "Delhi", "Bangalore", "Amsterdam", "Dublin", "Austin",
 )
 
 
 @lru_cache(maxsize=8192)
-def _skill_pattern(skill: str, strict: bool) -> re.Pattern:
-    """Token-aware matcher: '+', '#', '.' count as part of a token, so 'c'
-    won't match inside 'c++' and vice-versa. `strict` = case-sensitive, used for
-    short/ambiguous skills so the language 'Go' doesn't match the verb 'go'."""
-    esc = re.escape(skill)
-    flags = 0 if strict else re.I
+def _pattern(token: str, cased: bool) -> re.Pattern:
+    """Token-aware boundary matcher: '+', '#', '.' count as part of a token, so
+    'c' won't match inside 'c++'. `cased` = case-sensitive (for canonical prose)."""
+    esc = re.escape(token)
+    flags = 0 if cased else re.I
     return re.compile(rf"(?<![a-zA-Z0-9+#.]){esc}(?![a-zA-Z0-9+#.])", flags)
 
 
 def _contains_skill(text: str, skill: str) -> bool:
-    strict = len(skill) <= 2 or skill.lower() in _AMBIGUOUS
-    return bool(_skill_pattern(skill, strict).search(text))
+    key = skill.lower()
+    if key in _PROSE:  # match only the canonical capitalisation, case-sensitively
+        return bool(_pattern(_PROSE[key], True).search(text))
+    return bool(_pattern(key, False).search(text))
+
+
+def _first_pos(text: str, skill: str) -> int:
+    key = skill.lower()
+    pat = _pattern(_PROSE[key], True) if key in _PROSE else _pattern(key, False)
+    m = pat.search(text)
+    return m.start() if m else 10**9
 
 
 def _normalize_skill(skill: str) -> str:
     s = skill.strip()
+    if s.lower() in _PROSE:
+        return _PROSE[s.lower()]
     if s.lower() in ("c#", "c++", ".net"):
         return s
+    if s.lower() in _ACRONYMS or (len(s) <= 3 and s.isalpha()):
+        return s.upper()
     return s.title() if s.islower() else s
 
 
 def extract_skills(resume_text: str) -> list[str]:
-    found: list[str] = []
+    matched: list[str] = []
     seen: set[str] = set()
-    for skill in sorted(SKILLS, key=len, reverse=True):
-        if _contains_skill(resume_text, skill):
-            key = skill.lower()
-            if key not in seen:
-                seen.add(key)
-                found.append(_normalize_skill(skill))
-    return found[:30]
+    for skill in SKILLS:
+        key = skill.lower()
+        if key in seen or not _contains_skill(resume_text, skill):
+            continue
+        seen.add(key)
+        matched.append(skill)
+    # Order by where they appear in the resume (top skills first), not alphabetically.
+    matched.sort(key=lambda s: (_first_pos(resume_text, s), -len(s)))
+    return [_normalize_skill(s) for s in matched][:30]
 
 
 def extract_location(resume_text: str) -> str:
-    for pattern in (_LOCATION_RE, _CITY_COUNTRY_RE):
-        match = pattern.search(resume_text)
-        if match:
-            loc = match.group(1).strip().rstrip(".,;")
-            if len(loc) > 2:
-                return loc
+    m = _LOCATION_RE.search(resume_text)
+    if m:
+        loc = m.group(1).strip().rstrip(".,;")
+        if len(loc) > 2 and not _looks_like_prose(loc):
+            return loc
+    for m in _CITY_COUNTRY_RE.finditer(resume_text):
+        loc = m.group(1).strip().rstrip(".,;")
+        if 2 < len(loc) <= 40 and not _looks_like_prose(loc):
+            return loc
     for city in _CITIES:
         if re.search(rf"\b{re.escape(city)}\b", resume_text, re.I):
             return city
     return "Remote"
 
 
+def _looks_like_prose(text: str) -> bool:
+    words = re.findall(r"[A-Za-z]+", text.lower())
+    return any(w in _LOC_BLOCK for w in words) or len(words) > 4
+
+
 def generate_keywords(skills: list[str]) -> list[str]:
     if not skills:
         return ["software developer", "engineer"]
-    keywords = [f"{skill} developer" for skill in skills[:3]]
-    if len(keywords) < 3:
-        keywords.append(" ".join(skills[:2]))
+    primary = skills[0]
+    # One role phrase + concrete skill tokens (avoids every keyword sharing
+    # the generic word "developer", which pollutes relevance filtering).
+    keywords = [f"{primary} developer"]
+    for s in skills[1:4]:
+        if s.lower() != primary.lower():
+            keywords.append(s)
+    if len(keywords) == 1:
+        keywords.append(primary)
     return keywords[:5]
 
 
@@ -96,7 +150,54 @@ def parse_resume(resume_text: str) -> dict[str, Any]:
     }
 
 
-def analyze(candidate_skills: list[str], title: str, description: str) -> dict[str, Any]:
+_ROLE_STOP = {
+    "senior", "junior", "mid", "staff", "principal", "lead", "remote", "hybrid",
+    "the", "and", "for", "with", "years", "year", "experience", "your", "profile",
+    "new", "full", "time", "contract", "developer",  # too generic on its own
+}
+
+
+def role_terms(keywords: list[str], skills: list[str] | None = None) -> set[str]:
+    """Significant role/skill tokens used to judge title relevance & filter noise."""
+    terms: set[str] = set()
+    for kw in keywords or []:
+        for w in re.split(r"[^A-Za-z0-9+#.]+", kw):
+            wl = w.lower()
+            if len(wl) > 2 and wl not in _ROLE_STOP:
+                terms.add(wl)
+    for s in (skills or [])[:6]:
+        if s:
+            terms.add(s.lower())
+    return terms
+
+
+def _title_hits(title: str, matched: list[str], terms: set[str]) -> int:
+    hits = sum(1 for s in matched if _contains_skill(title, s))
+    hits += sum(1 for t in terms if t not in {m.lower() for m in matched}
+                and _contains_skill(title, t))
+    return hits
+
+
+def is_relevant(
+    candidate_skills: list[str],
+    terms: set[str],
+    title: str,
+    description: str,
+) -> bool:
+    """True if a job plausibly matches the candidate — used to drop feed noise
+    (e.g. a writer/sales role for a backend engineer) before scoring."""
+    text = f"{title} {description}"
+    skill_hits = sum(1 for s in candidate_skills if s and _contains_skill(text, s))
+    title_role_hits = sum(1 for t in terms if _contains_skill(title, t))
+    return skill_hits >= 2 or title_role_hits >= 2 or (skill_hits >= 1 and title_role_hits >= 1)
+
+
+def analyze(
+    candidate_skills: list[str],
+    title: str,
+    description: str,
+    terms: set[str] | None = None,
+) -> dict[str, Any]:
     """The heart of local scoring: compare a candidate's skills to a job.
 
     Returns matched skills, missing skills (skills the job asks for that the
@@ -106,35 +207,48 @@ def analyze(candidate_skills: list[str], title: str, description: str) -> dict[s
     description = description or ""
     text = f"{title}\n{description}"
     cand = [s for s in (candidate_skills or []) if s]
+    terms = terms or set()
 
     matched = [s for s in cand if _contains_skill(text, s)]
 
-    # Skills the job appears to require, mined from the JD.
+    # Skills the job appears to require, mined from the JD (tech skills only).
     job_skills: list[str] = []
     job_seen: set[str] = set()
     for skill in SKILLS:
-        if skill in _AMBIGUOUS:
+        low = skill.lower()
+        if low in job_seen or (len(low) == 1):  # skip single-letter noise in gaps
             continue
-        if _contains_skill(text, skill) and skill.lower() not in job_seen:
-            job_seen.add(skill.lower())
+        if _contains_skill(text, skill):
+            job_seen.add(low)
             job_skills.append(_normalize_skill(skill))
 
     cand_lower = {s.lower() for s in cand}
     missing = [s for s in job_skills if s.lower() not in cand_lower][:8]
 
     n_match = len(matched)
-    n_job = max(len(job_skills), 1)
-    coverage = n_match / n_job
-    title_hits = sum(1 for s in matched if _contains_skill(title, s))
+
+    # Absolute overlap is the primary signal; coverage is secondary (denominator
+    # capped so skill-heavy JDs aren't unfairly penalised); title relevance gives
+    # full credit for an aligned role even on a generic title.
+    match_strength = min(1.0, n_match / 5)
+    coverage = n_match / max(min(len(job_skills), 6), 1)
+    title_hits = _title_hits(title, matched, terms)
+    if title_hits >= 2:
+        role_relevance = 1.0
+    elif title_hits == 1:
+        role_relevance = 0.75
+    elif _ROLE_WORDS_RE.search(title):
+        role_relevance = 0.5
+    else:
+        role_relevance = 0.0
 
     score = int(round(100 * (
-        0.55 * coverage
-        + 0.30 * min(1.0, n_match / 5)
-        + 0.15 * min(1.0, title_hits / 2)
+        0.40 * match_strength
+        + 0.25 * coverage
+        + 0.35 * role_relevance
     )))
     score = max(0, min(100, score))
 
-    verdict = _verdict(score)
     if matched:
         top = ", ".join(matched[:3])
         summary = f"Title & skills align — {top}." if title_hits else f"Overlap on {top}."
@@ -145,7 +259,7 @@ def analyze(candidate_skills: list[str], title: str, description: str) -> dict[s
         "score": score,
         "matched_skills": matched,
         "missing_skills": missing,
-        "verdict": verdict,
+        "verdict": _verdict(score),
         "summary": summary,
     }
 

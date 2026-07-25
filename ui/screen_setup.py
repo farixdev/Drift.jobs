@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -141,7 +142,13 @@ class SetupScreen(QWidget):
         self.start_btn.clicked.connect(self._on_start)
         body.addWidget(self.start_btn)
 
-        root.addWidget(shell, 1)
+        # Scrollable so the full source list + controls never overflow the window.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setWidget(shell)
+        root.addWidget(scroll, 1)
         self.setAcceptDrops(True)
 
     def _on_custom_url_changed(self, text: str) -> None:
