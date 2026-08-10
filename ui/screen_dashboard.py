@@ -20,22 +20,17 @@ class DashboardScreen(QWidget):
     def _build(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        self._host = QWidget()
-        self._body = QVBoxLayout(self._host)
-        self._body.setContentsMargins(28, 24, 28, 28)
-        self._body.setSpacing(16)
-        scroll.setWidget(self._host)
-        root.addWidget(scroll)
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        root.addWidget(self._scroll)
 
     def reload(self):
-        while self._body.count():
-            it = self._body.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
-            elif it.layout():
-                self._clear_layout(it.layout())
+        # Rebuild the whole content pane into a fresh widget and swap it in —
+        # setWidget() deletes the previous one, so nothing can duplicate.
+        host = QWidget()
+        self._body = QVBoxLayout(host)
+        self._body.setContentsMargins(28, 24, 28, 28)
+        self._body.setSpacing(16)
         s = dashboard.summary()
 
         header = QHBoxLayout()
@@ -83,6 +78,7 @@ class DashboardScreen(QWidget):
         qa.addStretch()
         self._body.addLayout(qa)
         self._body.addStretch()
+        self._scroll.setWidget(host)   # swap in the freshly built pane
 
     # -- widgets ----------------------------------------------------------- #
     def _tile(self, label, val):
@@ -104,16 +100,20 @@ class DashboardScreen(QWidget):
         view.clicked.connect(lambda: self.navigate.emit("sources"))
         top.addWidget(view)
         lay.addLayout(top)
+        healthy = sum(1 for h in health if h["health_status"] == "healthy")
         problem = [h for h in health if h["health_status"] in ("degraded", "disabled")]
         if not problem:
-            lay.addWidget(Label("All sources healthy.", "subhead", "success"))
+            lay.addWidget(Label(f"All {len(health)} sources healthy.", "subhead", "success"))
         else:
+            lay.addWidget(Label(f"{healthy} healthy · {len(problem)} need attention",
+                               "footnote", "secondary"))
             for h in problem[:6]:
                 row = QHBoxLayout()
                 row.addWidget(Label(h["display_name"] or h["slug"], "subhead", "primary"), 1)
                 tone = "danger" if h["health_status"] == "disabled" else "warning"
-                row.addWidget(Chip(h["health_status"], tone))
+                row.addWidget(Chip(h["health_status"], tone), 0, Qt.AlignVCenter)
                 lay.addLayout(row)
+        lay.addStretch()   # keep rows top-packed so the chip doesn't stretch
         return card
 
     def _recent_jobs_card(self):
@@ -153,11 +153,3 @@ class DashboardScreen(QWidget):
             row.addWidget(Label(u["next_action_due"] or "", "footnote", "tertiary"))
             lay.addLayout(row)
         return card
-
-    def _clear_layout(self, layout):
-        while layout.count():
-            it = layout.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
-            elif it.layout():
-                self._clear_layout(it.layout())

@@ -48,7 +48,7 @@ def recent_jobs(limit: int = 8) -> list[dict]:
                       (SELECT final_score FROM job_score sc WHERE sc.job_id=j.id
                        ORDER BY scored_at DESC LIMIT 1) AS score
                  FROM job j LEFT JOIN source s ON s.id=j.source_id
-                WHERE j.is_active=1 ORDER BY j.first_seen_at DESC LIMIT ?""",
+                WHERE j.is_active=1 ORDER BY j.first_seen_at DESC, j.id DESC LIMIT ?""",
             (limit,)).fetchall()
     return [dict(r) for r in rows]
 

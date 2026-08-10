@@ -50,22 +50,15 @@ class SourcesScreen(QWidget):
         root.setSpacing(0)
         self.topbar = TopBar(0)
         root.addWidget(self.topbar)
-        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        root.addWidget(self._scroll, 1)
+
+    def reload(self):
         host = QWidget()
         self._body = QVBoxLayout(host)
         self._body.setContentsMargins(24, 18, 24, 24)
         self._body.setSpacing(8)
-        scroll.setWidget(host)
-        root.addWidget(scroll, 1)
-
-    def reload(self):
-        while self._body.count():
-            it = self._body.takeAt(0)
-            w = it.widget()
-            if w:
-                w.deleteLater()
-            elif it.layout():
-                self._clear(it.layout())
         head = QHBoxLayout()
         head.addWidget(Label("Sources", "title2", "primary"), 1)
         back = Button("← Back", "plain", "md"); back.clicked.connect(self.back.emit)
@@ -75,6 +68,7 @@ class SourcesScreen(QWidget):
         for h in dashboard.source_health():
             self._body.addWidget(self._row(h))
         self._body.addStretch()
+        self._scroll.setWidget(host)
 
     def _row(self, h):
         card = Card()

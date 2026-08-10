@@ -43,6 +43,10 @@ def mark_running(rsr_id: int) -> None:
 
 def save_source_result(run_id: int, rsr_id: int, result) -> None:
     """Persist the per-source outcome AND upsert its raw jobs (the checkpoint)."""
+    # Normalize OUTSIDE the write transaction — it's CPU-bound over up to N jobs
+    # and must not hold SQLite's single write lock while other source threads wait.
+    from core.normalize import normalize_job
+    normalized = [(normalize_job(raw), raw.source) for raw in result.jobs]
     with closing(connect()) as conn, conn:
         conn.execute(
             """UPDATE run_source_result SET status=?, duration_ms=?, jobs_returned=?,
@@ -50,12 +54,8 @@ def save_source_result(run_id: int, rsr_id: int, result) -> None:
             (result.status, result.duration_ms, len(result.jobs),
              result.error_class, result.error_detail, result.http_status, rsr_id),
         )
-        from core.normalize import normalize_job
-        for raw in result.jobs:
-            sid = _source_id(conn, raw.source)
-            # Normalize so the checkpoint uses the SAME content fingerprint the
-            # final scored upsert will — no duplicate rows across the two writes.
-            nj = normalize_job(raw)
+        for nj, source in normalized:
+            sid = _source_id(conn, source)
             conn.execute(
                 """
                 INSERT INTO job (fingerprint, title, company_name, location_raw,

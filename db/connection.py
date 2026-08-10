@@ -16,7 +16,10 @@ from pathlib import Path
 # install's history is found and migrated in place (see migrations/m002).
 DB_PATH = Path(__file__).resolve().parent / "jobs.db"
 
-_BUSY_TIMEOUT_MS = 5000
+# Generous busy timeout: under a wide concurrent scan many source threads write
+# health/checkpoint rows; SQLite serialises writers, so each must wait for the
+# lock rather than error out.
+_BUSY_TIMEOUT_MS = 30000
 
 
 def connect(path: Path | str | None = None) -> sqlite3.Connection:

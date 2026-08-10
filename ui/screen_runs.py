@@ -26,24 +26,15 @@ class RunsScreen(QWidget):
         root.setSpacing(0)
         self.topbar = TopBar(0)
         root.addWidget(self.topbar)
-        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        root.addWidget(self._scroll, 1)
+
+    def reload(self):
         host = QWidget()
         self._body = QVBoxLayout(host)
         self._body.setContentsMargins(24, 18, 24, 24)
         self._body.setSpacing(8)
-        scroll.setWidget(host)
-        root.addWidget(scroll, 1)
-
-    def reload(self):
-        while self._body.count():
-            it = self._body.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
-            elif it.layout():
-                while it.layout().count():
-                    x = it.layout().takeAt(0)
-                    if x.widget():
-                        x.widget().deleteLater()
         head = QHBoxLayout()
         head.addWidget(Label("Runs", "title2", "primary"), 1)
         back = Button("← Back", "plain", "md"); back.clicked.connect(self.back.emit)
@@ -65,4 +56,6 @@ class RunsScreen(QWidget):
                 "caption1", "tertiary"))
             row.addLayout(left, 1)
             row.addWidget(Chip(r["status"], _TONE.get(r["status"], "neutral")))
+            self._body.addWidget(card)
         self._body.addStretch()
+        self._scroll.setWidget(host)
