@@ -10,11 +10,21 @@ throwaway file — every helper reads the attribute at call time, never caches i
 from __future__ import annotations
 
 import sqlite3
+import sys
 from pathlib import Path
 
-# Same on-disk location the app has always used. Kept stable so an existing
-# install's history is found and migrated in place (see migrations/m002).
-DB_PATH = Path(__file__).resolve().parent / "jobs.db"
+
+def _default_db_path() -> Path:
+    # Frozen exe: the bundle is read-only, so keep the DB in a writable per-user
+    # dir. Dev checkout: the same in-repo location the app has always used, so an
+    # existing install's history is found and migrated in place (migrations/m002).
+    if getattr(sys, "frozen", False):
+        from app_paths import user_data_dir
+        return user_data_dir() / "jobs.db"
+    return Path(__file__).resolve().parent / "jobs.db"
+
+
+DB_PATH = _default_db_path()
 
 # Generous busy timeout: under a wide concurrent scan many source threads write
 # health/checkpoint rows; SQLite serialises writers, so each must wait for the

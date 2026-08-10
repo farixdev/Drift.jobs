@@ -10,3 +10,9 @@ db/*.bak.*
 .pytest_cache/
 .coverage
 htmlcov/
+
+# PyInstaller build artifacts (the exe is a release asset, not committed)
+build/
+dist/
+build_log.txt
+*.manifest

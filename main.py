@@ -9,15 +9,21 @@ from core.config import load_env
 
 load_env()
 
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 
+from app_paths import resource_path
 from ui.app import DriftApp
+from version import __version__
 
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("drift.jobs")
+    app.setApplicationName("Drift")
+    app.setApplicationDisplayName("Drift")
+    app.setApplicationVersion(__version__)
     app.setOrganizationName("drift.jobs")
+    app.setWindowIcon(QIcon(resource_path("assets/logo/drift.ico")))
 
     # Bring the DB up to date so theme/accent preferences load, then install the
     # design system (tokens + global stylesheet + base font) before any UI shows.

@@ -28,7 +28,13 @@ from ui.worker import ScanWorker
 class DriftApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("drift.jobs")
+        self.setWindowTitle("Drift")
+        try:
+            from PyQt5.QtGui import QIcon
+            from app_paths import resource_path
+            self.setWindowIcon(QIcon(resource_path("assets/logo/drift.ico")))
+        except Exception:
+            pass
         self.setMinimumSize(900, 640)
         self.resize(1120, 780)
         self.setStyleSheet(styles.APP_STYLESHEET)

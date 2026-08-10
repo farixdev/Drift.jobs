@@ -1,8 +1,15 @@
 import os
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ENV_FILE = ROOT / ".env"
+# Frozen exe: keep .env alongside the DB in a writable per-user dir (the bundle
+# is read-only). Dev checkout: the repo-root .env, unchanged.
+if getattr(sys, "frozen", False):
+    from app_paths import user_data_dir
+    ENV_FILE = user_data_dir() / ".env"
+else:
+    ENV_FILE = ROOT / ".env"
 _PLACEHOLDERS = {"your_key_here", "changeme", "xxx", ""}
 
 DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant"

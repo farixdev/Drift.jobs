@@ -1,3 +1,18 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/wordmark_dark.png">
+    <img src="assets/logo/wordmark_light.png" alt="Drift" width="420">
+  </picture>
+</p>
+
+<p align="center"><em>Find your next role — local-first, privacy-respecting, explainable.</em></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-0A84FF" alt="version 1.0.0">
+  <img src="https://img.shields.io/badge/platform-Windows-0A84FF" alt="Windows">
+  <img src="https://img.shields.io/badge/PyQt5-desktop-0A84FF" alt="PyQt5">
+</p>
+
 # Drift
 
 A local-first job-discovery desktop app. Point it at your résumé, and it fans out
