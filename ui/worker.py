@@ -32,6 +32,7 @@ class ScanWorker(QThread):
         threshold: int,
         resume_text: str = "",
         custom_url: str = "",
+        criteria=None,
         parent=None,
     ):
         super().__init__(parent)
@@ -40,6 +41,8 @@ class ScanWorker(QThread):
         self.threshold = threshold
         self.resume_text = resume_text
         self.custom_url = custom_url
+        self.criteria = criteria           # optional user-built SearchCriteria
+        self._criteria = None              # resolved criteria used for the run
         self.parsed_skills: list[str] = []
         self.parsed_resume_text: str = resume_text
         self._stopped = False
@@ -81,6 +84,20 @@ class ScanWorker(QThread):
             self._log(f"Keywords — {', '.join(keywords[:4])}", "done")
             self.progress_signal.emit(30)
 
+            # Resolve the effective criteria: an explicit user-built one (from the
+            # search builder), else a permissive default seeded from the résumé.
+            from core.sources.spec import SearchCriteria
+            if self.criteria is not None:
+                self._criteria = self.criteria
+                if not self._criteria.effective_keywords():
+                    self._criteria.keywords = keywords
+                if not self._criteria.location:
+                    self._criteria.location = location
+            else:
+                self._criteria = SearchCriteria(
+                    keywords=keywords, location=location,
+                    sources=list(self.selected_sources))
+
             all_jobs = self._scrape(keywords, location)
 
             if self._stopped:
@@ -97,6 +114,16 @@ class ScanWorker(QThread):
                 + (f" ({multi} seen on multiple sites)" if multi else ""),
                 "done",
             )
+
+            # Apply the search criteria (keywords, seniority, location, salary,
+            # employment, company, freshness) + per-company / max-results caps.
+            from core.search import apply_criteria
+            before = len(clustered)
+            clustered, dropped = apply_criteria(clustered, self._criteria)
+            if dropped:
+                top = ", ".join(f"{n} {r}" for r, n in
+                                sorted(dropped.items(), key=lambda x: -x[1])[:3])
+                self._log(f"Filtered by criteria — {before - len(clustered)} dropped ({top})", "done")
 
             # Drop jobs the user already dismissed (matched by content fingerprint).
             dismissed = dismissed_ids()
@@ -167,20 +194,22 @@ class ScanWorker(QThread):
         # bounded pool, per-domain rate limiting, priority (APIs first), retries,
         # circuit breaker, checkpointing, streaming, and cooperative cancel.
         from core.engine import CancelToken, RunConfig, ScanEngine
-        from core.engine import events as ev
-        from core.sources import SearchCriteria, resolve_selection
+        from core.sources import resolve_selection
 
-        keys = [SOURCE_KEYS.get(s, s.lower().replace(" ", "")) for s in self.selected_sources]
+        source_keys = self._criteria.sources or self.selected_sources
+        keys = [SOURCE_KEYS.get(s, s.lower().replace(" ", "")) for s in source_keys]
         definitions = resolve_selection([k for k in keys if k])
         if not definitions:
             definitions = resolve_selection(["remoteok"])
 
         self._cancel = CancelToken()
-        criteria = SearchCriteria.from_legacy(keywords, location)
-        engine = ScanEngine(RunConfig.load(), on_event=self._on_engine_event,
-                            cancel=self._cancel)
+        # The criteria's volume controls drive the engine (min_results → widening).
+        cfg = RunConfig.load()
+        cfg.min_results = self._criteria.min_results or cfg.min_results
+        cfg.max_results = self._criteria.max_results or cfg.max_results
+        engine = ScanEngine(cfg, on_event=self._on_engine_event, cancel=self._cancel)
         self._log(f"Searching {len(definitions)} source(s)…", "active")
-        summary = self._engine_summary = engine.run(definitions, criteria)
+        summary = self._engine_summary = engine.run(definitions, self._criteria)
         self._log(
             f"Found {summary.total_jobs} unique jobs · "
             f"{summary.sources_succeeded}/{summary.sources_attempted} sources ok"

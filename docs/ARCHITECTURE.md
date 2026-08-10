@@ -215,3 +215,39 @@ number (lexical + freshness at minimum). m006 adds the embedding cache.
 persist (content fingerprints; checkpoint and final write share identity, no dup
 rows). Verified live: 52 raw → 41 roles, and a 3-stage rank with real Groq rerank
 producing explainable sub-scores + rationales.
+
+---
+
+## Search criteria builder (Phase 5)
+
+```
+core/sources/spec.py   SearchCriteria — the full, saveable query object
+core/search/           filter (apply_criteria) · store (saved searches CRUD)
+ui/screen_search_builder.py   the builder form (Phase-1 components)
+```
+
+**SearchCriteria** is a reusable query object — role (titles, required/nice/
+excluded keywords, seniority, boolean override), location (mode, cities/regions/
+countries, radius, relocation), compensation (min salary + currency + period,
+include-unstated, equity), employment types, company (size/industry/funding,
+only/exclude, exclude-staffing, exclude-domains), eligibility (visa, clearance),
+freshness, volume (min/max results, per-source, per-company), and source
+selection. Every field optional except role terms; `effective_keywords()` unifies
+role terms for source-level matching; `to_dict`/`from_dict` persist it.
+
+**Filtering** (`apply_criteria`) enforces what can't be pushed to the ATS boards —
+excluded/required keywords, seniority, location mode + country, salary floor
+(respecting the include-unstated toggle), employment type, company include/exclude
++ staffing filter, freshness, and the per-company + max-results caps — returning
+survivors plus a per-reason drop tally.
+
+**Saved searches** persist a named criteria to the `search` table (query_json)
+with duplicate-and-edit and last-run tracking.
+
+**Integration:** the worker resolves an effective criteria (an explicit builder
+criteria, else a permissive one seeded from the résumé), drives the engine with
+its source selection + volume (min_results → widening), and applies `apply_criteria`
+after dedup and before ranking. The engine's widening now relaxes nice-to-have
+keywords → date window → location mode → country → salary floor, reporting each
+step. The builder screen is reachable from setup ("Advanced search builder →") and
+the ⌘K palette.

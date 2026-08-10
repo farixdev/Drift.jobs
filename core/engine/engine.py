@@ -201,18 +201,29 @@ def _eta(done, total, elapsed) -> float:
 def _widen(criteria: SearchCriteria):
     """Relax the query one step. Returns (new_criteria, human_description) or None.
 
-    Minimal until Phase 5's richer criteria: drop the most-specific keyword, then
-    clear the remote constraint. Phase 5 adds radius/date-window widening.
+    Order (least to most impactful): drop nice-to-have keywords, extend the date
+    window, then loosen location mode, country, and the salary floor, and finally
+    drop a plain keyword as a last resort.
     """
+    import dataclasses as _dc
+    r = _dc.replace
+    if criteria.keywords_nice:
+        return r(criteria, keywords_nice=[]), \
+            f"dropped {len(criteria.keywords_nice)} nice-to-have keyword(s)"
+    if criteria.posted_within_days and criteria.posted_within_days < 30:
+        nxt = {1: 3, 3: 7, 7: 14, 14: 30}.get(criteria.posted_within_days, 30)
+        return r(criteria, posted_within_days=nxt), f"extended freshness to {nxt} days"
+    if criteria.posted_within_days == 30:
+        return r(criteria, posted_within_days=None), "removed the date filter"
+    if criteria.location_mode and criteria.location_mode != "any":
+        return r(criteria, location_mode="any"), "removed the location-mode filter"
+    if criteria.countries:
+        return r(criteria, countries=[]), "removed the country filter"
+    if criteria.salary_min:
+        return r(criteria, salary_min=None), "removed the salary floor"
     if criteria.keywords and len(criteria.keywords) > 1:
         dropped = criteria.keywords[-1]
-        return (SearchCriteria(keywords=criteria.keywords[:-1], location=criteria.location,
-                               remote=criteria.remote, max_per_source=criteria.max_per_source,
-                               companies=criteria.companies),
-                f"dropped keyword '{dropped}'")
+        return r(criteria, keywords=criteria.keywords[:-1]), f"dropped keyword '{dropped}'"
     if criteria.remote is not None:
-        return (SearchCriteria(keywords=criteria.keywords, location=criteria.location,
-                               remote=None, max_per_source=criteria.max_per_source,
-                               companies=criteria.companies),
-                "removed the remote/on-site filter")
+        return r(criteria, remote=None), "removed the remote/on-site filter"
     return None

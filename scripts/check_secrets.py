@@ -38,14 +38,17 @@ ALLOW = {
 
 
 def _staged_files() -> list[str]:
+    # Decode as UTF-8 (the repo's encoding) rather than the Windows locale default,
+    # which can't decode some bytes and would crash the hook.
     out = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                         capture_output=True, text=True)
-    return [f.strip() for f in out.stdout.splitlines() if f.strip()]
+                         capture_output=True, encoding="utf-8", errors="replace")
+    return [f.strip() for f in (out.stdout or "").splitlines() if f.strip()]
 
 
 def _staged_content(path: str) -> str:
-    out = subprocess.run(["git", "show", f":{path}"], capture_output=True, text=True)
-    return out.stdout if out.returncode == 0 else ""
+    out = subprocess.run(["git", "show", f":{path}"], capture_output=True,
+                         encoding="utf-8", errors="replace")
+    return (out.stdout or "") if out.returncode == 0 else ""
 
 
 def scan() -> int:

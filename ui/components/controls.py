@@ -306,6 +306,13 @@ class Stepper(QWidget, Themed):
             self._value_lbl.setText(str(v))
             self.changed.emit(v)
 
+    def value(self) -> int:
+        return self._value
+
+    def set_value(self, v: int):
+        self._value = max(self._min, min(self._max, int(v)))
+        self._value_lbl.setText(str(self._value))
+
     def restyle(self):
         self._value_lbl.setStyleSheet(f"color:{self.pal().label_primary};")
 

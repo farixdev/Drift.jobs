@@ -70,9 +70,10 @@ def run_source(defn: SourceDefinition, criteria: SearchCriteria, *,
                 errors.append((code, ecls, edetail))
 
     # keyword filter + cap
-    if criteria.keywords:
+    _kw = criteria.effective_keywords()
+    if _kw:
         jobs = [j for j in jobs
-                if keyword_match(criteria.keywords, j.title, j.description, j.company)]
+                if keyword_match(_kw, j.title, j.description, j.company)]
     jobs = jobs[: criteria.max_per_source]
 
     if boards_ok == 0 and errors:
@@ -119,15 +120,16 @@ def run_legacy(defn: SourceDefinition, criteria: SearchCriteria, *, cancel=None,
     from core.scraper import get_scraper
     try:
         scraper = get_scraper(defn.legacy_slug)
-        jobs = scraper.search(criteria.keywords, criteria.location) or []
+        jobs = scraper.search(criteria.effective_keywords() or criteria.keywords, criteria.location) or []
     except Exception as exc:
         health.record_failure(defn.slug, f"{type(exc).__name__}: {exc}")
         return _result(defn, "failed", started, error_class=type(exc).__name__,
                        error_detail=str(exc)[:200])
-    if criteria.keywords:
+    _kw = criteria.effective_keywords()
+    if _kw:
         from core.scraper.util import keyword_match
         jobs = [j for j in jobs
-                if keyword_match(criteria.keywords, j.title, j.description, j.company)]
+                if keyword_match(_kw, j.title, j.description, j.company)]
     jobs = jobs[: criteria.max_per_source]
     health.record_success(defn.slug)
     return _result(defn, "done", started, jobs=jobs, boards_attempted=1, boards_succeeded=1)

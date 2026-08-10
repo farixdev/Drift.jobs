@@ -24,6 +24,7 @@ from ui.widgets import SourceCheckbox, TopBar
 class SetupScreen(QWidget):
     # emits: resume_path, source_keys, threshold, resume_text, custom_url
     start_scan = pyqtSignal(str, list, int, str, str)
+    open_builder = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -141,6 +142,16 @@ class SetupScreen(QWidget):
         )
         self.start_btn.clicked.connect(self._on_start)
         body.addWidget(self.start_btn)
+
+        self.advanced_btn = QPushButton("Advanced search builder →")
+        self.advanced_btn.setCursor(Qt.PointingHandCursor)
+        self.advanced_btn.setFixedHeight(32)
+        self.advanced_btn.setStyleSheet(
+            f"QPushButton {{ background:transparent; border:none; color:{styles.TEXT_SECONDARY};"
+            f" font-size:13px; }} QPushButton:hover {{ color:{styles.ACCENT}; }}"
+        )
+        self.advanced_btn.clicked.connect(self.open_builder.emit)
+        body.addWidget(self.advanced_btn)
 
         # Scrollable so the full source list + controls never overflow the window.
         scroll = QScrollArea()
