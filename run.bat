@@ -1,59 +1,49 @@
 @echo off
 REM ============================================================
 REM  Drift - one-click launcher for Windows.
-REM  Creates the virtual environment + installs dependencies on
-REM  first run, then starts the app. Just double-click this file.
+REM  First run: creates the venv + installs deps. Then launches.
+REM  Just double-click this file.
 REM ============================================================
 setlocal
 cd /d "%~dp0"
 
-set "VENV=.venv"
-set "PY=%VENV%\Scripts\python.exe"
+set "PY=.venv\Scripts\python.exe"
 
-REM --- Ensure the virtual environment exists ------------------
-if not exist "%PY%" (
-    echo [Drift] Creating virtual environment...
-    where py >nul 2>nul
-    if %errorlevel%==0 (
-        py -3 -m venv "%VENV%"
-    ) else (
-        python -m venv "%VENV%"
-    )
-    if not exist "%PY%" (
-        echo.
-        echo [Drift] ERROR: could not create the virtual environment.
-        echo         Install Python 3.12+ from https://python.org and try again.
-        echo.
-        pause
-        exit /b 1
-    )
-)
+if exist "%PY%" goto checkdeps
 
-REM --- Ensure dependencies are installed ----------------------
-"%PY%" -c "import PyQt5" >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [Drift] Installing dependencies (first run only, this can take a minute)...
-    "%PY%" -m pip install --upgrade pip
-    "%PY%" -m pip install -r requirements.txt
-    if %errorlevel% neq 0 (
-        echo.
-        echo [Drift] ERROR: dependency installation failed. See the messages above.
-        echo.
-        pause
-        exit /b 1
-    )
-)
+echo [Drift] Creating virtual environment...
+py -3 -m venv .venv 1>nul 2>nul
+if exist "%PY%" goto checkdeps
+python -m venv .venv 1>nul 2>nul
+if exist "%PY%" goto checkdeps
+echo.
+echo [Drift] ERROR: could not create a virtual environment.
+echo         Install Python 3.12+ from https://python.org, then run this again.
+echo.
+pause
+goto end
 
-REM --- Launch -------------------------------------------------
+:checkdeps
+"%PY%" -c "import PyQt5" 1>nul 2>nul
+if not errorlevel 1 goto launch
+echo [Drift] Installing dependencies (first run only, this can take a minute)...
+"%PY%" -m pip install --upgrade pip
+"%PY%" -m pip install -r requirements.txt
+if not errorlevel 1 goto launch
+echo.
+echo [Drift] ERROR: dependency installation failed. See the messages above.
+echo.
+pause
+goto end
+
+:launch
 echo [Drift] Starting...
 "%PY%" main.py
-set "EXITCODE=%errorlevel%"
+if not errorlevel 1 goto end
+echo.
+echo [Drift] The app exited with an error. See the messages above.
+echo.
+pause
 
-if not "%EXITCODE%"=="0" (
-    echo.
-    echo [Drift] The app exited with an error ^(code %EXITCODE%^). See above.
-    echo.
-    pause
-)
-
+:end
 endlocal

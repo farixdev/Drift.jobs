@@ -10,20 +10,32 @@ DEFAULT_MAX_JOBS_TO_SCORE = 15
 
 
 def load_env() -> None:
-    if not ENV_FILE.is_file():
+    """Load .env into os.environ. Never raises — a missing/unreadable .env or a
+    broken python-dotenv install must not stop the app from starting (it runs
+    fine with local scoring and no keys)."""
+    try:
+        if not ENV_FILE.is_file():
+            return
+    except OSError:
         return
+    # Prefer python-dotenv; fall back to a manual parse on ANY failure (a broken
+    # or partial dotenv install raises ImportError/AttributeError/etc.).
     try:
         from dotenv import load_dotenv
-
         load_dotenv(ENV_FILE, override=True)
-    except ImportError:
+        return
+    except Exception:
+        pass
+    try:
         raw = ENV_FILE.read_text(encoding="utf-8-sig")
-        for line in raw.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            os.environ[key.strip()] = value.strip().strip('"').strip("'")
+    except OSError:
+        return
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ[key.strip()] = value.strip().strip('"').strip("'")
 
 
 def get_groq_api_key() -> str:
