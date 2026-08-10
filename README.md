@@ -1,217 +1,62 @@
-<div align="center">
+# Drift
 
-```
-      _      _  __  _   
-   __| |_ __(_)/ _|| |_ 
-  / _` | '__| | |_ | __|
- | (_| | |  | |  _|| |_ 
-  \__,_|_|  |_|_|   \__|
-```
+A local-first job-discovery desktop app. Point it at your résumé, and it fans out
+across compliant job sources, dedupes the same role across boards, and ranks what's
+left against your résumé with an explainable score — then helps you tailor, apply,
+and track.
 
-### **drift.jobs**
-*Your resume, working while you sleep.*
+Runs fully offline with local scoring; add a provider key for AI extraction,
+tailoring, and cover letters. **Bring your own key** — nothing is sent anywhere
+you don't configure.
 
-![Python](https://img.shields.io/badge/Python-3.10+-black?style=flat-square)
-![PyQt5](https://img.shields.io/badge/PyQt5-5.15-black?style=flat-square)
-![Groq](https://img.shields.io/badge/Groq-Llama_3-black?style=flat-square)
-![License](https://img.shields.io/badge/license-MIT-black?style=flat-square)
+## Highlights
+- **Compliant sources.** Employer-canonical ATS boards (Greenhouse, Lever, Ashby,
+  Workable) + curated key-free feeds. Every source is robots-respecting with an
+  honest user-agent; detection-evasion sources were removed (see
+  `docs/SOURCES_REJECTED.md`).
+- **Concurrent engine.** Bounded worker pool, per-domain rate limiting, priority
+  ordering, retries with jittered backoff, circuit breakers, checkpointing, live
+  cancellation, and a streaming run view.
+- **Real deduplication.** The same role across many boards collapses to one
+  record (content fingerprint + simhash), keeping the most authoritative source
+  and a "seen on N sites" badge.
+- **Explainable ranking.** Lexical BM25 → semantic embeddings → LLM rerank,
+  blended with a freshness decay. Every job shows its sub-scores and rationale.
+- **Résumé intelligence.** Structured parsing into an editable form, a transparent
+  8-dimension match rubric, and honest tailoring — bullets are rephrased, never
+  fabricated (a safety net reverts invented metrics/skills; you approve every diff).
+- **Bring-your-own-key AI.** Eight providers (Anthropic, OpenAI, Gemini, Groq,
+  OpenRouter, Mistral, DeepSeek, Ollama) behind one router with per-task model
+  routing, fallback chains, a prompt cache, and a cost meter. Keys live in the OS
+  keychain.
+- **Track applications.** A Kanban pipeline with funnel metrics and export.
 
-</div>
-
----
-
-**drift** reads your resume, scrapes job boards in parallel, and scores every
-listing against your profile — then surfaces only the ones worth your time,
-tells you *why* each one fits (and what you're missing), and drafts a tailored
-cover letter in one click.
-
-Upload your CV. Pick your sources. Set a match threshold. Let it run.
-
-> **No API key required.** Drift scores every job locally out of the box. Add a
-> free [Groq](https://console.groq.com/keys) key in **⚙ Settings** for sharper
-> AI scoring and AI-written cover letters.
-
----
-
-## How it works
-
-```
-your resume (PDF/DOC/DOCX)
-        │
-        ▼
-  extract skills, keywords, location
-  (local, or Groq if a key is set)
-        │
-        ▼
-  scrape sources in parallel
-  RemoteOK · Remotive · Arbeitnow · …
-        │
-        ▼
-  hybrid scoring
-  free local baseline for every job,
-  Groq refines the top matches
-        │
-        ▼
-  results sorted by fit — matched vs
-  missing skills, cover letters,
-  save / apply / dismiss, live filters
-```
-
----
-
-## Features
-
-- **Works with zero setup** — local, word-boundary skill matching scores every
-  job with no key, no quota, no cloud.
-- **Hybrid AI scoring** — the free local pass ranks everything; Groq (Llama 3)
-  refines the most promising matches for a sharper 0–100 fit score.
-- **Gap analysis** — every card shows the skills you **match** *and* the skills
-  the job wants that you're **missing**.
-- **One-click cover letters** — AI drafts a tailored, editable letter per job;
-  copy it or save it as `.txt`. Falls back to a local template with no key.
-- **Reliable, key-free sources** — RemoteOK, Remotive, and Arbeitnow are JSON
-  APIs that return *real job descriptions* and don't get blocked. LinkedIn,
-  Indeed, ZipRecruiter, web search, and any custom `/jobs` page are also there.
-- **Parallel scraping** — sources run concurrently; a scan takes seconds, and a
-  **Stop** button lets you score what's found so far at any moment.
-- **Job states that stick** — **Save**, mark **Applied**, or **Dismiss** a job.
-  Dismissed jobs never come back, and previously-seen jobs are flagged **NEW**.
-- **Live filtering** — drag the match slider, search by title/company/skill, or
-  filter by All / New / Saved / Applied — instantly, without re-scanning.
-- **Export anywhere** — CSV, JSON, or a polished shareable HTML report.
-- **In-app settings** — set your Groq key, model, and scoring depth from a
-  dialog; it writes back to `.env` for you.
-
----
-
-## Getting started
-
-### Prerequisites
-
-- Python 3.10+
-- *(optional)* Google Chrome — only for the LinkedIn / Indeed scrapers
-- *(optional)* A free Groq API key → [console.groq.com/keys](https://console.groq.com/keys)
-
-### Installation
-
+## Quick start
 ```bash
-git clone https://github.com/farixdev/Drift-JobFinder.git
-cd Drift-JobFinder
-
-python -m venv .venv
-.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
-
-pip install -r requirements.txt
-```
-
-### Run
-
-```bash
+pip install -r requirements-dev.txt
 python main.py
 ```
+1. Upload a résumé (Search screen).
+2. Pick sources and a match threshold, or open the **Advanced search builder** for
+   full criteria (role, location, salary, seniority, freshness, volume, …).
+3. Run the scan — watch sources stream in — then review, tailor, and track.
 
-That's it — Drift runs immediately with local scoring. To enable AI scoring and
-cover letters, click **⚙ Settings** in the app and paste a free Groq key (or
-create a `.env` with `GROQ_API_KEY=...`).
+No key needed to start. Add one in **Settings** for AI features.
 
----
+## Design system
+Press **Ctrl+Shift+D** in-app for the live component gallery (macOS/iOS system
+aesthetic, light + dark). **Ctrl+K** opens the command palette.
 
-## Usage
+## Documentation
+- `docs/AUDIT.md` — the original repo audit that grounded the rebuild.
+- `docs/ARCHITECTURE.md` — how it's built, phase by phase.
+- `docs/DESIGN_SYSTEM.md` — tokens, components, motion.
+- `docs/AI_PROVIDERS.md` — providers, key safety, routing.
+- `docs/SOURCES.md` / `docs/SOURCES_REJECTED.md` / `docs/COMPLIANCE.md` — source
+  posture and what Drift will not do.
+- `docs/RUNBOOK.md` — run, test, troubleshoot.
 
-1. **Upload your resume** — drag a `.pdf` / `.doc` / `.docx` onto the drop zone.
-2. **Pick sources** — the ★ recommended ones (RemoteOK, Remotive, Arbeitnow) are
-   on by default and need no login. Or paste a company `/jobs` URL.
-3. **Set your threshold** — the minimum match score you care about.
-4. **Start scanning** — watch sources stream in live; hit **Stop** any time.
-5. **Review** — cards are sorted by fit, with matched (green) and missing
-   (amber) skills. Drag the slider or search to refine on the fly.
-6. **Act** — **Apply** opens the listing, **✎ Cover letter** drafts one,
-   **★ Save** / **✓ Applied** / **✕ Dismiss** track your pipeline.
-7. **Export** — CSV, JSON, or an HTML report.
-
----
-
-## Project structure
-
-```
-drift/
-├── main.py                     # entry point
-├── models.py                   # Job model + states + fingerprinting
-├── ui/
-│   ├── app.py                  # window + screen manager
-│   ├── screen_setup.py         # upload + sources + threshold
-│   ├── screen_scan.py          # live parallel scan log + Stop
-│   ├── screen_results.py       # cards, filters, actions, export
-│   ├── dialogs.py              # Settings + Cover letter dialogs
-│   ├── worker.py               # concurrent, cancellable scan pipeline
-│   ├── widgets.py              # top bar, chips, source rows
-│   └── styles.py               # dark design tokens
-├── core/
-│   ├── config.py               # .env read/write, settings
-│   ├── parser.py               # PDF/DOC/DOCX text extraction
-│   ├── ai_engine.py            # Groq: parse, score, cover letters
-│   ├── local_engine.py         # offline scoring + gap analysis
-│   ├── matcher.py              # hybrid local + AI ranking
-│   ├── report.py               # CSV / JSON / HTML export
-│   ├── skills_db.py            # skill vocabulary
-│   └── scraper/
-│       ├── remoteok.py         # ★ JSON API, no key
-│       ├── remotive.py         # ★ JSON API, no key
-│       ├── arbeitnow.py        # ★ JSON API, no key
-│       ├── wwr.py              # We Work Remotely
-│       ├── linkedin.py         # Selenium (needs Chrome)
-│       ├── indeed.py           # Selenium (needs Chrome)
-│       ├── ziprecruiter.py     # best-effort HTML
-│       ├── internet_bing.py    # web search
-│       ├── internet_google.py  # web search
-│       ├── custom.py           # any company /jobs page
-│       └── util.py             # HTML clean, dates, salary
-├── db/                         # SQLite job store + states
-└── templates/report.html       # HTML export template
-```
-
----
-
-## Tech stack
-
-| | |
-|---|---|
-| Language | Python 3.10+ |
-| UI | PyQt5 |
-| Resume parsing | pdfplumber · pymupdf · pypdf · python-docx |
-| AI / scoring | Groq — Llama 3 (free tier) · local fallback |
-| Scraping | requests · BeautifulSoup · Selenium (optional) |
-| Storage | SQLite3 |
-| Export | Jinja2 · CSV · JSON |
-
----
-
-## Groq free tier
-
-Drift defaults to **Llama 3.1 8B Instant** — fast, free, generous limits. Switch
-to **Llama 3.3 70B** in Settings for even sharper judgment. A typical scan of
-~50 jobs makes ~2 API calls (one to parse the resume, one to batch-score the top
-matches), so you stay well inside the free tier — and with no key at all, Drift
-still scores every job locally.
-
----
-
-## Roadmap
-
-- [ ] Email digest — daily summary of new high matches
-- [ ] Saved profiles — named resume + source presets, re-run on a schedule
-- [ ] Auto-fetch full JDs for Selenium sources to sharpen scoring
-- [ ] Resume gap coach — "learn these 3 skills to unlock 12 more jobs"
-- [ ] More sources (Otta, Y Combinator, Wellfound)
-
----
-
-## License
-
-MIT — do whatever you want with it.
-
----
-
-<div align="center">
-  <sub>Built by <a href="https://github.com/farixdev">faris</a> · give it a ⭐ if it helped</sub>
-</div>
+## Compliance
+Drift respects `robots.txt`, uses an honest user-agent, and never solves CAPTCHAs,
+evades bot detection, bypasses paywalls/logins, or accesses accounts you don't
+hold. See `docs/COMPLIANCE.md`.

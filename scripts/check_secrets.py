@@ -45,15 +45,30 @@ def _staged_files() -> list[str]:
     return [f.strip() for f in (out.stdout or "").splitlines() if f.strip()]
 
 
+def _all_tracked_files() -> list[str]:
+    out = subprocess.run(["git", "ls-files"], capture_output=True,
+                         encoding="utf-8", errors="replace")
+    return [f.strip() for f in (out.stdout or "").splitlines() if f.strip()]
+
+
 def _staged_content(path: str) -> str:
     out = subprocess.run(["git", "show", f":{path}"], capture_output=True,
                          encoding="utf-8", errors="replace")
     return (out.stdout or "") if out.returncode == 0 else ""
 
 
-def scan() -> int:
+def _file_content(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return ""
+
+
+def scan(all_tracked: bool = False) -> int:
     findings: list[str] = []
-    for path in _staged_files():
+    files = _all_tracked_files() if all_tracked else _staged_files()
+    for path in files:
         norm = path.replace("\\", "/")
         if norm in ALLOW or norm == ".env.example":
             continue
@@ -61,7 +76,8 @@ def scan() -> int:
         if norm == ".env":
             findings.append(f"{path}: .env must never be committed")
             continue
-        content = _staged_content(path)
+        content = _staged_content(path) if not all_tracked else \
+            _file_content(path)
         for pat, label in PATTERNS:
             if pat.search(content):
                 findings.append(f"{path}: possible {label}")
@@ -97,4 +113,4 @@ def install() -> int:
 if __name__ == "__main__":
     if "--install" in sys.argv:
         raise SystemExit(install())
-    raise SystemExit(scan())
+    raise SystemExit(scan(all_tracked="--all" in sys.argv))
