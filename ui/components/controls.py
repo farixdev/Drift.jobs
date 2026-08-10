@@ -165,7 +165,9 @@ class Checkbox(QAbstractButton, Themed):
     def sizeHint(self):
         from PyQt5.QtCore import QSize
         fm = self.fontMetrics()
-        return QSize(24 + fm.horizontalAdvance(self.text()), 24)
+        # text is painted at x=28 (see paintEvent); reserve that + a little slack
+        # so the label never clips.
+        return QSize(28 + fm.horizontalAdvance(self.text()) + 6, 24)
 
     def paintEvent(self, _):
         p = self.pal()

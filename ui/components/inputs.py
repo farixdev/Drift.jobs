@@ -146,10 +146,8 @@ class ChipInput(QWidget, Themed):
         self._col.setContentsMargins(0, 0, 0, 0)
         self._col.setSpacing(8)
         self._chips_host = QWidget()
-        self._chips_row = QHBoxLayout(self._chips_host)
-        self._chips_row.setContentsMargins(0, 0, 0, 0)
-        self._chips_row.setSpacing(6)
-        self._chips_row.addStretch()
+        from ui.components.flow import FlowLayout
+        self._chips_row = FlowLayout(self._chips_host, hspacing=6, vspacing=6)
         self._col.addWidget(self._chips_host)
         self._edit = QLineEdit()
         self._edit.setPlaceholderText(placeholder)
@@ -162,6 +160,15 @@ class ChipInput(QWidget, Themed):
 
     def tokens(self):
         return list(self._tokens)
+
+    def set_tokens(self, tokens_):
+        """Replace the current chips (used to pre-fill from a résumé)."""
+        self._tokens = list(dict.fromkeys(t for t in (tokens_ or []) if t))
+        self._rebuild()
+        self.changed.emit(self.tokens())
+
+    def clear(self):
+        self.set_tokens([])
 
     def _add_current(self):
         t = self._edit.text().strip()
@@ -178,15 +185,19 @@ class ChipInput(QWidget, Themed):
             self.changed.emit(self.tokens())
 
     def _rebuild(self):
-        while self._chips_row.count() > 1:
+        while self._chips_row.count():
             item = self._chips_row.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            w = item.widget()
+            if w:
+                w.setParent(None)   # remove from view NOW (deleteLater is async and
+                w.deleteLater()     # would leave stale chips overlapping the new ones)
         for t in self._tokens:
             chip = Chip(t, removable=True)
             chip.removed.connect(lambda _=False, tok=t: self._remove(tok))
-            self._chips_row.insertWidget(self._chips_row.count() - 1, chip)
+            self._chips_row.addWidget(chip)
+        self._chips_row.invalidate()
         self._chips_host.setVisible(bool(self._tokens))
+        self._chips_host.updateGeometry()
 
     def restyle(self):
         p = self.pal()

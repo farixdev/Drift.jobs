@@ -8,6 +8,7 @@ from core.sources.definitions import (
     greenhouse,
     himalayas,
     lever,
+    recruitee,
     workable,
     workingnomads,
 )
@@ -17,6 +18,7 @@ ALL = [
     lever.DEFINITION,
     ashby.DEFINITION,
     workable.DEFINITION,
+    recruitee.DEFINITION,
     himalayas.DEFINITION,
     workingnomads.DEFINITION,
 ]

@@ -33,6 +33,8 @@ SOURCES: list[dict] = [
      "needs_browser": False, "note": "Employer-direct · remote flag + comp"},
     {"key": "workable", "label": "Workable (ATS)", "recommended": True,
      "needs_browser": False, "note": "Employer-direct postings · full descriptions"},
+    {"key": "recruitee", "label": "Recruitee (ATS)", "recommended": False,
+     "needs_browser": False, "note": "Employer-direct postings · Recruitee boards"},
     {"key": "himalayas", "label": "Himalayas", "recommended": True,
      "needs_browser": False, "note": "Remote roles · full descriptions + salary"},
     {"key": "workingnomads", "label": "Working Nomads", "recommended": False,
