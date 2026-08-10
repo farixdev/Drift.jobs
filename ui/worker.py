@@ -10,15 +10,10 @@ from models import STATUS_NEW
 
 # Legacy label -> key mapping (setup screen now emits keys directly).
 SOURCE_KEYS = {
-    "LinkedIn": "linkedin",
-    "Indeed": "indeed",
     "Remotive": "remotive",
     "RemoteOK": "remoteok",
     "Arbeitnow": "arbeitnow",
     "We Work Remotely": "wwr",
-    "ZipRecruiter": "ziprecruiter",
-    "Search internet (Bing)": "bing",
-    "Search internet (Google)": "google",
 }
 
 
@@ -159,18 +154,30 @@ class ScanWorker(QThread):
 
         def run_one(key: str):
             try:
-                return key, get_scraper(key).search(keywords, location)
+                scraper = get_scraper(key)
+                jobs = scraper.search(keywords, location)
+                # Declarative sources stash a SourceResult with real diagnostics.
+                return key, jobs, getattr(scraper, "last_result", None)
             except Exception as exc:  # keep the scan alive on a single failure
-                return key, exc
+                return key, exc, None
 
         self._log(f"Searching {total} source(s) in parallel…", "active")
         with ThreadPoolExecutor(max_workers=min(total, 4)) as pool:
             futures = {pool.submit(run_one, key): key for key in sources}
             for future in as_completed(futures):
-                key, result = future.result()
+                key, result, diag = future.result()
                 done += 1
                 if isinstance(result, Exception):
                     self._log(f"{key} — failed ({type(result).__name__})", "done")
+                elif diag is not None and diag.status not in ("done",):
+                    # Surface HTTP status + error class + timestamp — no silent failures.
+                    self._log(
+                        f"{key} — {diag.status}"
+                        f" ({diag.error_class or 'error'}"
+                        f"{f' HTTP {diag.http_status}' if diag.http_status else ''})"
+                        f" · {diag.finished_at[11:19]}",
+                        "done",
+                    )
                 else:
                     collected.extend(result)
                     self._log(f"{key} — {len(result)} listings ({len(collected)} total)", "done")

@@ -29,9 +29,7 @@ requests==2.34.2
 beautifulsoup4==4.14.3
 jinja2==3.1.6
 
-# --- browser sources (linkedin/indeed adapters) ---
-# NOTE: scheduled for REMOVAL in Phase 6 — both adapters are robots-disallowed
-# and ship detection-evasion flags (audit §6, §7.3). Pinned only so the current
-# app keeps importing until that phase lands.
-selenium==4.44.0
-undetected-chromedriver==3.5.5
+# NOTE: selenium + undetected-chromedriver were removed in Phase 6 along with the
+# LinkedIn/Indeed browser adapters (robots-disallowed + detection-evasion). The
+# Phase 6 Tier-6 browser adapter (Playwright, robots-respecting) will add its own
+# dependency when that tier lands.
