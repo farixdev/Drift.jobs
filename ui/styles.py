@@ -1,154 +1,78 @@
-"""Dark minimal design tokens — drift.jobs"""
+"""Compatibility bridge — maps the 1.x style constants onto the new design tokens.
 
-# Base
-BG = "#09090B"
-SHELL = "#0F0F11"
-SURFACE = "#141416"
-RAISED = "#1C1C1F"
-BORDER = "#27272A"
-BORDER_SUBTLE = "rgba(255, 255, 255, 0.06)"
+The legacy screens (setup / scan / results) reference `styles.BG`, `styles.ACCENT`,
+etc. inline. Rather than rewrite those screens now (they are replaced wholesale by
+the Phase 10 dashboard/jobs views), this module resolves each old name to the
+current theme's palette at access time via PEP 562 `__getattr__`. Existing screens
+therefore adopt the macOS token system's colors immediately; full theme-reactivity
+and the component library arrive when those screens are rebuilt in Phase 10.
 
-# Text
-TEXT_PRIMARY = "#FAFAFA"
-TEXT_SECONDARY = "#A1A1AA"
-TEXT_TERTIARY = "#71717A"
+New code should import from `ui.theme` and `ui.components`, not from here.
+"""
+from __future__ import annotations
 
-# Actions
-ACCENT = "#FAFAFA"
-ACCENT_TEXT = "#09090B"
-ACCENT_HOVER = "#E4E4E7"
+from ui.theme import theme as _theme
+from ui.theme import tokens as _tokens
 
-# Semantic
-SUCCESS = "#34D399"
-SUCCESS_BG = "rgba(52, 211, 153, 0.12)"
-WARNING = "#FBBF24"
-MATCH_BG = "rgba(52, 211, 153, 0.14)"
-MATCH_TEXT = "#6EE7B7"
-LOC_BG = "#27272A"
-LOC_TEXT = "#A1A1AA"
 
-# Progress / log
-DOT_PENDING = "#3F3F46"
-DOT_ACTIVE = "#34D399"
-DOT_DONE = "#52525B"
-LOG_BG = "#0C0C0E"
-INFO_BORDER = "#52525B"
-INFO_BG = "#1A1A1D"
+def _fontstack() -> str:
+    return ", ".join(f'"{f}"' if " " in f else f for f in _tokens.FONT_STACK)
 
-# Gap (missing skills) chips
-GAP_BG = "rgba(251, 191, 36, 0.12)"
-GAP_TEXT = "#FCD34D"
 
-# NEW badge + accents
-NEW_BG = "rgba(96, 165, 250, 0.16)"
-NEW_TEXT = "#93C5FD"
-DANGER = "#F87171"
-DANGER_BG = "rgba(248, 113, 113, 0.12)"
-STAR = "#FBBF24"
-RECOMMENDED_TEXT = "#6EE7B7"
+def __getattr__(name: str):
+    t = _theme()
+    p = t.palette()
+    tinted16 = t.focus_ring().replace("0.40", "0.16")
+    mapping = {
+        "BG": p.bg_base,
+        "SHELL": p.bg_sidebar_solid,
+        "SURFACE": p.bg_elevated,
+        "RAISED": p.bg_elevated,
+        "BORDER": p.separator_opaque,
+        "BORDER_SUBTLE": p.separator_nonopaque,
+        "TEXT_PRIMARY": p.label_primary,
+        "TEXT_SECONDARY": p.label_secondary,
+        "TEXT_TERTIARY": p.label_tertiary,
+        "ACCENT": t.accent(),
+        "ACCENT_TEXT": t.accent_on(),
+        "ACCENT_HOVER": t.accent(),
+        "SUCCESS": p.success,
+        "SUCCESS_BG": p.success_bg,
+        "WARNING": p.warning,
+        "MATCH_BG": p.success_bg,
+        "MATCH_TEXT": p.success,
+        "LOC_BG": p.fill_tertiary,
+        "LOC_TEXT": p.label_secondary,
+        "DOT_PENDING": p.fill_secondary,
+        "DOT_ACTIVE": t.accent(),
+        "DOT_DONE": p.label_tertiary,
+        "LOG_BG": p.bg_base,
+        "INFO_BORDER": p.separator_nonopaque,
+        "INFO_BG": p.fill_tertiary,
+        "GAP_BG": p.warning_bg,
+        "GAP_TEXT": p.warning,
+        "NEW_BG": p.info_bg,
+        "NEW_TEXT": p.info,
+        "DANGER": p.danger,
+        "DANGER_BG": p.danger_bg,
+        "STAR": p.warning,
+        "RECOMMENDED_TEXT": p.success,
+        "FONT_FAMILY": _fontstack(),
+        "APP_STYLESHEET": t.stylesheet(),
+    }
+    if name in mapping:
+        return mapping[name]
+    raise AttributeError(f"module 'ui.styles' has no attribute {name!r}")
 
 
 def verdict_colors(score: int) -> tuple[str, str]:
-    """(background, text) for a score's verdict pill."""
+    """(background, text) for a score's verdict pill, from the semantic palette."""
+    t = _theme()
+    p = t.palette()
     if score >= 80:
-        return "rgba(52, 211, 153, 0.14)", "#6EE7B7"
+        return p.success_bg, p.success
     if score >= 60:
-        return "rgba(96, 165, 250, 0.16)", "#93C5FD"
+        return t.focus_ring().replace("0.40", "0.16"), t.accent()
     if score >= 40:
-        return "rgba(251, 191, 36, 0.14)", "#FCD34D"
-    return "rgba(148, 148, 158, 0.14)", "#A1A1AA"
-
-FONT_FAMILY = '"Segoe UI", "Inter", system-ui, sans-serif'
-
-APP_STYLESHEET = f"""
-QMainWindow, QWidget {{
-    background-color: {BG};
-    color: {TEXT_PRIMARY};
-    font-family: {FONT_FAMILY};
-    font-size: 13px;
-}}
-QScrollArea {{
-    border: none;
-    background: transparent;
-}}
-QScrollArea > QWidget > QWidget {{
-    background: transparent;
-}}
-QScrollBar:vertical {{
-    width: 6px;
-    background: transparent;
-    margin: 4px 2px;
-}}
-QScrollBar::handle:vertical {{
-    background: {BORDER};
-    border-radius: 3px;
-    min-height: 24px;
-}}
-QScrollBar::handle:vertical:hover {{
-    background: {TEXT_TERTIARY};
-}}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-    height: 0;
-}}
-QLineEdit {{
-    background: {SURFACE};
-    color: {TEXT_PRIMARY};
-    border: 1px solid {BORDER};
-    border-radius: 8px;
-    padding: 0 12px;
-    font-size: 13px;
-    selection-background-color: {INFO_BG};
-}}
-QLineEdit:focus {{
-    border-color: {TEXT_TERTIARY};
-}}
-QLineEdit:disabled {{
-    background: {SHELL};
-    color: {TEXT_TERTIARY};
-}}
-QLineEdit::placeholder {{
-    color: {TEXT_TERTIARY};
-}}
-QSlider::groove:horizontal {{
-    height: 3px;
-    background: {BORDER};
-    border-radius: 2px;
-}}
-QSlider::handle:horizontal {{
-    width: 14px;
-    height: 14px;
-    margin: -6px 0;
-    background: {ACCENT};
-    border: none;
-    border-radius: 7px;
-}}
-QSlider::sub-page:horizontal {{
-    background: {ACCENT};
-    border-radius: 2px;
-}}
-QSlider::add-page:horizontal {{
-    background: {BORDER};
-    border-radius: 2px;
-}}
-QMessageBox {{
-    background-color: {SURFACE};
-}}
-QMessageBox QLabel {{
-    color: {TEXT_PRIMARY};
-}}
-QPushButton {{
-    background: {RAISED};
-    color: {TEXT_PRIMARY};
-    border: 1px solid {BORDER};
-    border-radius: 8px;
-    padding: 8px 14px;
-}}
-QPushButton:hover {{
-    background: {INFO_BG};
-    border-color: {TEXT_TERTIARY};
-}}
-QFileDialog {{
-    background-color: {SURFACE};
-    color: {TEXT_PRIMARY};
-}}
-"""
+        return p.warning_bg, p.warning
+    return p.fill_tertiary, p.label_secondary

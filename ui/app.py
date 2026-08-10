@@ -1,6 +1,8 @@
+from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
     QMainWindow,
     QMessageBox,
+    QShortcut,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -8,9 +10,11 @@ from PyQt5.QtWidgets import (
 
 from ui import styles
 from ui.dialogs import SettingsDialog
+from ui.screen_design_system import DesignSystemScreen
 from ui.screen_results import ResultsScreen
 from ui.screen_scan import ScanScreen
 from ui.screen_setup import SetupScreen
+from ui.theme import theme
 from ui.worker import ScanWorker
 
 
@@ -33,10 +37,17 @@ class DriftApp(QMainWindow):
         self.setup_screen = SetupScreen()
         self.scan_screen = ScanScreen()
         self.results_screen = ResultsScreen()
+        self.design_screen = DesignSystemScreen()
 
         self.stack.addWidget(self.setup_screen)
         self.stack.addWidget(self.scan_screen)
         self.stack.addWidget(self.results_screen)
+        self.stack.addWidget(self.design_screen)
+
+        # Design-system gallery (Ctrl+Shift+D) and command palette (Ctrl+K).
+        QShortcut(QKeySequence("Ctrl+Shift+D"), self,
+                  activated=lambda: self.stack.setCurrentWidget(self.design_screen))
+        QShortcut(QKeySequence("Ctrl+K"), self, activated=self._open_command_palette)
 
         self.setup_screen.start_scan.connect(self._begin_scan)
         self.results_screen.back_to_setup.connect(self._go_setup)
@@ -50,6 +61,15 @@ class DriftApp(QMainWindow):
 
     def _open_settings(self) -> None:
         SettingsDialog(self).exec_()
+
+    def _open_command_palette(self) -> None:
+        from ui.components import CommandPalette
+        CommandPalette([
+            ("Go to setup / new scan", self._go_setup),
+            ("Open design system", lambda: self.stack.setCurrentWidget(self.design_screen)),
+            ("Toggle light / dark theme", theme().toggle),
+            ("Open settings", self._open_settings),
+        ], self).exec_()
 
     def _go_setup(self) -> None:
         self.stack.setCurrentWidget(self.setup_screen)
