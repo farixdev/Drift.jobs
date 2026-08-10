@@ -494,30 +494,33 @@ Ordered by dependency. The spec's execution order is
 agree with and have kept. Two insertions are marked ⚠️ where I believe the spec's
 order carries avoidable risk.
 
-### 9.1 ⚠️ BLOCKING DECISION — the UI platform
+### 9.1 RESOLVED — the UI platform: **PyQt5 desktop** (decided 2026-08-10)
 
-Phase 1 specifies backdrop-filter materials, a `/design-system` **route**, `⌘K`
-command palette, WCAG contrast audits, and `prefers-reduced-motion`. Phase 10
-specifies a virtualised 5,000-row table. **Qt Style Sheets support none of this
-natively** — there is no backdrop-filter, no routing, and no virtualised table
-widget of that class.
+The audit originally flagged this as blocking and leaned toward a web port, on
+the belief that Qt could not deliver Phase 1's materials, motion, or a
+virtualised table. **That belief was wrong, and is corrected here.** Capability
+probe on the target machine (Windows 11 build 26200, PyQt5 / Qt 5.15.2):
 
-Three honest options:
-
-| Option | Effort | Consequence |
+| Phase 1/10 requirement | Web assumption | Verified Qt reality |
 |---|---|---|
-| **A. Port to web** (Tauri/Electron + React, or FastAPI + browser) | Highest — all 1,811 UI lines rewritten | Every Phase 1/10 requirement becomes achievable as written. Python core (`core/`, `db/`) survives intact behind an API |
-| **B. Stay PyQt5, adapt the spec** | Lowest | Keeps working software. Must formally drop backdrop blur, the `/design-system` route, and `⌘K`; approximate the rest with QSS + `QAbstractItemModel` |
-| **C. PyQt5 → QML/Qt Quick** | High | Real animation and GPU compositing; still no CSS backdrop-filter, still no web routing. Worst effort-to-payoff ratio of the three |
+| Backdrop blur (materials) | CSS `backdrop-filter` only | ✅ `dwmapi.DwmSetWindowAttribute` → native Mica/Acrylic, GPU-composited by DWM. Build ≥ 22621 confirmed |
+| Spring motion `cubic-bezier(0.32,0.72,0,1)` | CSS easing | ✅ `QEasingCurve.BezierSpline` + `setCustomType` — exact curve |
+| `prefers-reduced-motion` | media query | ✅ `SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION)` — readable, returns live value |
+| Virtualised 5,000-row table | react-window / TanStack | ✅ `QTableView` + `QAbstractTableModel` — natively virtualised; row widgets never instantiated off-screen. A Qt **strength**, not a gap |
+| `⌘K` / `Ctrl+K` command palette | JS overlay | ✅ `QShortcut` + a frameless `QDialog` overlay |
+| `/design-system` **route** | URL routing | ⚠️ **Only genuine loss.** Qt has no URL router. Built as a design-system **screen** reachable via `Ctrl+Shift+D`, in the same nav stack. Same function, no route |
 
-**My recommendation: A.** Phases 2 and 3 are pure Python and are unaffected
-either way, so the port can happen at the Phase 1 boundary without stalling
-anything. Choosing B is entirely reasonable if you want a desktop app — but it
-must be a stated decision that rewrites Phase 1's deliverables, not a silent
-shortfall discovered at Phase 10.
+**Decision: stay on PyQt5.** Rationale beyond capability parity — desktop is the
+*more* efficient target here, not a compromise: no browser runtime, no
+HTTP/JSON hop between UI and `core/`, direct in-process Python calls, and a
+fraction of Electron's memory footprint. The existing `core/` and `db/` layers
+are kept and extended rather than moved behind an API. This environment also has
+a real display (1920×1080), so UI work can be run and screenshotted for
+verification rather than written blind.
 
-**This is the one thing I need from you before Phase 1.** Phase 2 and Phase 3
-can begin immediately regardless.
+**Phase 1 deliverable amendment:** the spec's `/design-system` *route* becomes a
+*screen* (`Ctrl+Shift+D`). Every other Phase 1 requirement stands as written and
+is achievable in Qt. This is the only spec change the platform decision forces.
 
 ### 9.2 ⚠️ Inserted step — characterization tests (before Phase 2)
 
@@ -537,8 +540,8 @@ as specified.
 | 1 | ⚠️ pre-2 | Characterization tests over current scoring/fingerprint/format helpers | none |
 | 2 | **P2** | New SQLite schema, WAL, FTS5, migration framework. **13 new tables.** | 🔴 **Destructive.** See §9.4 |
 | 3 | **P3** | Provider abstraction; port Groq→adapter; add 7 providers; keychain storage; task routing; cost meter | 🟠 `GROQ_API_KEY` must migrate out of `.env` into the keychain without stranding the user's existing key |
-| 4 | **DECISION** | §9.1 resolved | — |
-| 5 | **P1** | Design system + tokens + component library | 🟠 Total UI rewrite under option A |
+| 4 | **DECISION** | §9.1 resolved → **PyQt5 desktop** | done |
+| 5 | **P1** | Design-system tokens + Qt component library + `Ctrl+Shift+D` screen | 🟠 UI rebuilt in place (QSS + QtWidgets), `core/`/`db/` untouched |
 | 6 | **P6-T1** | Delete 5 non-compliant adapters. Declarative source definitions. robots checker. Honest UA. Tier-1 ATS (Greenhouse/Lever/Ashby/Workable/SmartRecruiters) | 🟠 **User-visible capability loss** — see §9.5 |
 | 7 | **P7** | Worker pool, token-bucket limiter, circuit breaker, checkpointing, cancellation | 🟡 Replaces `ScanWorker` wholesale |
 | 8 | **P8** | Content-based fingerprint + simhash + clustering. Normalization. 3-stage ranking | 🔴 **Fingerprint change invalidates every stored `job_id`** — see §9.4 |

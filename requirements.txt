@@ -1,13 +1,34 @@
-PyQt5>=5.15.0
-python-dotenv>=1.0.0
-openai>=1.30.0
-pdfplumber>=0.9.0
-pypdf>=4.0.0
-pymupdf>=1.24.0
-python-docx>=1.0.0
-pywin32>=306; sys_platform == "win32"
-selenium>=4.18.0
-undetected-chromedriver>=3.5.0
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-jinja2>=3.1.0
+# Drift runtime dependencies — pinned to the verified-working set (2026-08-10).
+# Audit §3 flagged all of these as floating (>=), which lets a major release of
+# pymupdf/openai/etc. break the app with no code change. Exact pins give a
+# reproducible install; bump deliberately, not by accident.
+#
+# Dev/test tooling lives in requirements-dev.txt.
+
+# --- UI ---
+PyQt5==5.15.11
+
+# --- config / env ---
+python-dotenv==1.2.2
+
+# --- AI (Groq via OpenAI-compatible client; Phase 3 generalizes this) ---
+openai==2.38.0
+
+# --- resume parsing ---
+pdfplumber==0.11.9
+pypdf==6.12.1
+pymupdf==1.27.2.3
+python-docx==1.2.0
+pywin32==311; sys_platform == "win32"
+
+# --- scraping / HTTP ---
+requests==2.34.2
+beautifulsoup4==4.14.3
+jinja2==3.1.6
+
+# --- browser sources (linkedin/indeed adapters) ---
+# NOTE: scheduled for REMOVAL in Phase 6 — both adapters are robots-disallowed
+# and ship detection-evasion flags (audit §6, §7.3). Pinned only so the current
+# app keeps importing until that phase lands.
+selenium==4.44.0
+undetected-chromedriver==3.5.5
