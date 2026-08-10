@@ -1,6 +1,6 @@
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from core import ai_engine, local_engine, matcher, parser
+from core import ai_engine, local_engine, parser
 from core.config import load_env
 from core.scraper import get_custom_scraper
 from db import dismissed_ids, init_db, known_ids, record_seen, statuses_for
@@ -89,8 +89,6 @@ class ScanWorker(QThread):
             # Phase 8: normalize every result to the canonical schema and cluster
             # duplicates (the same role posted to many boards) into one record.
             from core.dedup import normalize_and_cluster
-            from core.scraper.base import RawJob
-            from core.scraper.util import human_date, money
 
             clustered = normalize_and_cluster(all_jobs)
             multi = sum(1 for nj in clustered if nj.seen_count > 1)
@@ -111,33 +109,16 @@ class ScanWorker(QThread):
 
             prior = known_ids()  # what we'd seen before THIS scan
 
-            # Convert clusters to RawJob for the scorer; carry cluster meta by id.
-            raw_for_score: list = []
-            meta_by_id: dict = {}
-            for nj in clustered:
-                sym = {"USD": "$", "GBP": "£", "EUR": "€"}.get(nj.salary_currency, "$")
-                salary = money(nj.salary_min, nj.salary_max).replace("$", sym) \
-                    if (nj.salary_min or nj.salary_max) else ""
-                rj = RawJob(
-                    title=nj.title, company=nj.company_name,
-                    location=nj.location_raw or nj.location_city
-                    or ("Remote" if nj.work_mode == "remote" else ""),
-                    description=nj.description_text,
-                    url=nj.canonical_url or nj.apply_url, source=nj.source,
-                    job_type=nj.employment_type, salary=salary,
-                    posted=human_date(nj.posted_at) if nj.posted_at else "",
-                    remote=(nj.work_mode == "remote"), rich=True)
-                raw_for_score.append(rj)
-                meta_by_id[rj.id] = {"fingerprint": nj.fingerprint,
-                                     "alt_urls": nj.alt_urls, "seen_count": nj.seen_count}
+            # Phase 8 three-stage ranking: BM25 lexical → semantic → LLM rerank,
+            # blended with freshness and filtered by the blocklist. Produces Jobs
+            # with per-dimension sub-scores + a rationale (explainable scoring).
+            from core.ranking import rank_jobs
 
-            self._log(f"Scoring {len(raw_for_score)} jobs…", "active")
+            self._log(f"Ranking {len(clustered)} jobs…", "active")
             self.progress_signal.emit(80)
             use_llm = ai_engine.has_api_key()
-            scored = matcher.score_all(
-                raw_for_score, resume_text, skills=skills, use_llm=use_llm,
-                keywords=keywords, log=self._log, meta_by_id=meta_by_id,
-            )
+            scored = rank_jobs(clustered, resume_text, skills=skills,
+                               keywords=keywords, use_llm=use_llm, log=self._log)
 
             # Annotate new-vs-seen + persisted status, then remember them.
             status_map = statuses_for([j.job_id for j in scored])

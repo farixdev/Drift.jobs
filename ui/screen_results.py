@@ -105,6 +105,19 @@ class JobCard(QFrame):
         top.addLayout(right)
         outer.addLayout(top)
 
+        # Explainable score: per-dimension sub-scores (lexical/semantic/LLM).
+        subs = getattr(job, "subscores", None) or {}
+        parts = []
+        for key, label in (("lexical", "Lex"), ("semantic", "Sem"), ("llm", "AI")):
+            if key in subs:
+                parts.append(f"{label} {subs[key]}")
+        if "freshness" in subs:
+            parts.append(f"Fresh ×{subs['freshness']}")
+        if parts:
+            breakdown = QLabel("  ·  ".join(parts))
+            breakdown.setStyleSheet(f"font-size:11px; color:{styles.TEXT_TERTIARY};")
+            outer.addWidget(breakdown)
+
         # Skill chips: matched (green) + gaps (amber).
         if job.matched_skills or job.missing_skills:
             tags = QHBoxLayout()

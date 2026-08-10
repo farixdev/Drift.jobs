@@ -177,3 +177,41 @@ completed sources.
 streamed, checkpointed); full worker→engine→run-view wiring (66 jobs, source
 events). 11 engine tests cover config, token bucket, cancellation, priority,
 streaming, checkpoint+resume, and widening.
+
+---
+
+## Normalization, dedup & ranking (Phase 8)
+
+```
+core/normalize/   fields (salary/date/location/vocab/company) + normalize_job -> NormalizedJob
+core/dedup/       urls (canonicalize) · simhash · fingerprint (content) · cluster
+core/ranking/     lexical (BM25) · semantic (embeddings) · blend (weights/freshness/blocklist) · rank_jobs
+```
+
+**Identity is content-based** (migration m005): `fingerprint = normalize(company) +
+title + city`, replacing the 1.x URL hash so the same role on many boards collapses
+to one record. m005 recomputes every stored fingerprint, keeps a
+`fingerprint_alias(old→new)` table, and merges duplicate rows — repointing
+application/cover_letter/job_score onto the most authoritative survivor so user
+history is preserved. `init_db()` file-backs-up any non-fresh DB first.
+
+**Normalization** maps each raw result to the canonical schema — salary
+min/max/currency/period (null when unstated, never inferred), UTC dates with an
+approximate flag for relative strings, structured location + work-mode vocab,
+employment/seniority vocab, canonical company. **Dedup** clusters by content
+fingerprint (+ simhash near-merge for title/format variants), keeps the most
+authoritative + complete record (ATS > aggregator > feed), stores alternate apply
+URLs, and stamps `seen_count` ("seen on N sites" badge).
+
+**Ranking** is three stages: (1) lexical BM25 over the candidate corpus; (2)
+semantic cosine of cached embeddings (skipped gracefully when no embedder is
+configured — Ollama/OpenAI/…); (3) LLM rerank of the top 100, batched 20/call,
+returning a score + one-sentence rationale. The final score blends the available
+stages by user weights × a freshness decay, filtered against the blocklist. Every
+Job carries per-dimension sub-scores + rationale, so the card always explains the
+number (lexical + freshness at minimum). m006 adds the embedding cache.
+
+**Pipeline:** the worker runs engine → `normalize_and_cluster` → `rank_jobs` →
+persist (content fingerprints; checkpoint and final write share identity, no dup
+rows). Verified live: 52 raw → 41 roles, and a 3-stage rank with real Groq rerank
+producing explainable sub-scores + rationales.
