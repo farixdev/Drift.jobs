@@ -60,6 +60,9 @@ class SourceDefinition:
     enabled: bool = True
     health_check: Callable[[], bool] | None = None
     note: str = ""
+    # When set, this source is a legacy BaseScraper (core/scraper/) run via
+    # run_legacy() rather than the declarative query_mapper/response_parser path.
+    legacy_slug: str = ""
 
 
 @dataclass

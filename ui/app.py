@@ -12,7 +12,7 @@ from ui import styles
 from ui.dialogs import SettingsDialog
 from ui.screen_design_system import DesignSystemScreen
 from ui.screen_results import ResultsScreen
-from ui.screen_scan import ScanScreen
+from ui.screen_run import RunScreen
 from ui.screen_setup import SetupScreen
 from ui.theme import theme
 from ui.worker import ScanWorker
@@ -35,7 +35,7 @@ class DriftApp(QMainWindow):
         layout.addWidget(self.stack)
 
         self.setup_screen = SetupScreen()
-        self.scan_screen = ScanScreen()
+        self.scan_screen = RunScreen()
         self.results_screen = ResultsScreen()
         self.design_screen = DesignSystemScreen()
 
@@ -86,13 +86,17 @@ class DriftApp(QMainWindow):
         resume_text: str,
         custom_url: str = "",
     ) -> None:
-        self.scan_screen.reset(threshold)
+        # Custom-URL scans have no per-source list; otherwise seed the run view
+        # with the selected source keys so their rows render as 'queued'.
+        self.scan_screen.reset([] if custom_url else sources, threshold)
         self.stack.setCurrentWidget(self.scan_screen)
 
         self._worker = ScanWorker(resume_path, sources, threshold, resume_text, custom_url)
         self._worker.log_signal.connect(self.scan_screen.update_log)
         self._worker.progress_signal.connect(self.scan_screen.set_progress)
         self._worker.subtitle_signal.connect(self.scan_screen.set_subtitle)
+        self._worker.source_event.connect(self.scan_screen.update_source)
+        self._worker.stats_signal.connect(self.scan_screen.update_stats)
         self._worker.done_signal.connect(lambda jobs: self._show_results(jobs, threshold))
         self._worker.error_signal.connect(self._show_error)
         self._worker.start()

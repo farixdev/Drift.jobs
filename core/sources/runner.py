@@ -15,16 +15,23 @@ from core.sources import health, http, robots
 from core.sources.spec import SearchCriteria, SourceDefinition, SourceResult
 
 
-def run_source(defn: SourceDefinition, criteria: SearchCriteria) -> SourceResult:
+def run_source(defn: SourceDefinition, criteria: SearchCriteria, *,
+               retries: int = 0, limiter=None, cancel=None, proxy: str = "") -> SourceResult:
     started = datetime.now(timezone.utc)
     health.ensure_source(defn)
 
     if not defn.enabled:
         return _result(defn, "skipped", started, error_class="disabled",
                        error_detail="source disabled in definition")
+    if cancel is not None and getattr(cancel, "cancelled", False):
+        return _result(defn, "skipped", started, error_class="Cancelled",
+                       error_detail="run cancelled before start")
     if not health.allow(defn.slug):
         return _result(defn, "skipped", started, error_class="circuit_open",
                        error_detail="breaker open after repeated failures")
+
+    if limiter is not None:
+        limiter.configure(defn.base_url, defn.rate_limit_rpm)
 
     try:
         specs = defn.query_mapper(criteria)
@@ -38,10 +45,13 @@ def run_source(defn: SourceDefinition, criteria: SearchCriteria) -> SourceResult
     boards_ok = 0
 
     def fetch_one(spec):
+        if cancel is not None and getattr(cancel, "cancelled", False):
+            return ("skipped", None, "Cancelled", "run cancelled", [])
         if defn.robots_check and not robots.allowed(spec.url):
             return ("blocked", None, "RobotsDisallowed", spec.url, [])
         f = http.get(spec.url, method=spec.method, headers=spec.headers,
-                     params=spec.params, json_body=spec.json_body)
+                     params=spec.params, json_body=spec.json_body,
+                     retries=retries, limiter=limiter, cancel=cancel, proxy=proxy)
         if not f.ok:
             return ("failed", f.status, f.error_class, f.error_detail, [])
         try:
@@ -67,7 +77,10 @@ def run_source(defn: SourceDefinition, criteria: SearchCriteria) -> SourceResult
 
     if boards_ok == 0 and errors:
         code, ecls, edetail = errors[0]
-        # blocked if every failure was robots
+        if all(e[1] == "Cancelled" for e in errors):
+            # A cancellation is not a health failure — don't trip the breaker.
+            return _result(defn, "skipped", started, error_class="Cancelled",
+                           error_detail="run cancelled", boards_attempted=len(specs))
         status = "blocked" if all(e[1] == "RobotsDisallowed" for e in errors) else "failed"
         health.record_failure(defn.slug, f"{ecls}: {edetail}")
         return _result(defn, status, started, http_status=code, error_class=ecls,
@@ -85,3 +98,36 @@ def _result(defn, status, started, **kw) -> SourceResult:
         slug=defn.slug, status=status,
         duration_ms=int((now - started).total_seconds() * 1000),
         finished_at=now.replace(microsecond=0).isoformat(), **kw)
+
+
+def run_legacy(defn: SourceDefinition, criteria: SearchCriteria, *, cancel=None,
+               **_ignored) -> SourceResult:
+    """Run a legacy BaseScraper as a SourceResult so the engine treats it uniformly.
+
+    Legacy scrapers do their own HTTP and don't support cooperative cancellation
+    or the shared rate limiter yet (that arrives as each is converted to a real
+    declarative definition). Health + diagnostics are still tracked here.
+    """
+    started = datetime.now(timezone.utc)
+    health.ensure_source(defn)
+    if cancel is not None and getattr(cancel, "cancelled", False):
+        return _result(defn, "skipped", started, error_class="Cancelled",
+                       error_detail="run cancelled before start")
+    if not health.allow(defn.slug):
+        return _result(defn, "skipped", started, error_class="circuit_open",
+                       error_detail="breaker open after repeated failures")
+    from core.scraper import get_scraper
+    try:
+        scraper = get_scraper(defn.legacy_slug)
+        jobs = scraper.search(criteria.keywords, criteria.location) or []
+    except Exception as exc:
+        health.record_failure(defn.slug, f"{type(exc).__name__}: {exc}")
+        return _result(defn, "failed", started, error_class=type(exc).__name__,
+                       error_detail=str(exc)[:200])
+    if criteria.keywords:
+        from core.scraper.util import keyword_match
+        jobs = [j for j in jobs
+                if keyword_match(criteria.keywords, j.title, j.description, j.company)]
+    jobs = jobs[: criteria.max_per_source]
+    health.record_success(defn.slug)
+    return _result(defn, "done", started, jobs=jobs, boards_attempted=1, boards_succeeded=1)

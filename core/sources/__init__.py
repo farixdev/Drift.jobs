@@ -13,6 +13,8 @@ from core.sources.spec import (
     SourceResult,
 )
 
+from core.sources.legacy import LEGACY_DEFINITIONS
+
 DEFINITIONS: dict[str, SourceDefinition] = {d.slug: d for d in ALL}
 
 
@@ -26,6 +28,22 @@ def all_definitions() -> list[SourceDefinition]:
 
 def enabled_definitions() -> list[SourceDefinition]:
     return [d for d in ALL if d.enabled]
+
+
+def resolve_selection(keys: list[str]) -> list[SourceDefinition]:
+    """Map UI source keys to definitions — declarative (ATS) or legacy feeds."""
+    out: list[SourceDefinition] = []
+    for k in keys:
+        if k in DEFINITIONS:
+            out.append(DEFINITIONS[k])
+        elif k in LEGACY_DEFINITIONS:
+            out.append(LEGACY_DEFINITIONS[k])
+    return out
+
+
+def run_legacy(defn: SourceDefinition, criteria: SearchCriteria, **kw) -> SourceResult:
+    from core.sources.runner import run_legacy as _rl
+    return _rl(defn, criteria, **kw)
 
 
 __all__ = [

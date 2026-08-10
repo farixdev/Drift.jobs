@@ -1,10 +1,8 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from core import ai_engine, local_engine, matcher, parser
 from core.config import load_env
-from core.scraper import get_custom_scraper, get_scraper
+from core.scraper import get_custom_scraper
 from db import dedupe_by_url, dismissed_ids, init_db, known_ids, record_seen, statuses_for
 from models import STATUS_NEW
 
@@ -23,6 +21,9 @@ class ScanWorker(QThread):
     subtitle_signal = pyqtSignal(str)
     done_signal = pyqtSignal(list)
     error_signal = pyqtSignal(str)
+    # Live run signals for the run view: (slug, status, jobs_count) and stats.
+    source_event = pyqtSignal(str, str, int)
+    stats_signal = pyqtSignal(int, int, int)   # done, total, jobs_total
 
     def __init__(
         self,
@@ -42,9 +43,12 @@ class ScanWorker(QThread):
         self.parsed_skills: list[str] = []
         self.parsed_resume_text: str = resume_text
         self._stopped = False
+        self._cancel = None
 
     def stop(self) -> None:
         self._stopped = True
+        if self._cancel is not None:
+            self._cancel.cancel()
 
     def _log(self, message: str, status: str = "active") -> None:
         self.log_signal.emit(message, status)
@@ -146,43 +150,53 @@ class ScanWorker(QThread):
             self.progress_signal.emit(75)
             return jobs
 
-        sources = [SOURCE_KEYS.get(s, s.lower().replace(" ", "")) for s in self.selected_sources]
-        sources = [s for s in sources if s] or ["remoteok"]
-        total = len(sources)
-        collected: list = []
-        done = 0
+        # Route all selected sources through the Phase-7 concurrent engine:
+        # bounded pool, per-domain rate limiting, priority (APIs first), retries,
+        # circuit breaker, checkpointing, streaming, and cooperative cancel.
+        from core.engine import CancelToken, RunConfig, ScanEngine
+        from core.engine import events as ev
+        from core.sources import SearchCriteria, resolve_selection
 
-        def run_one(key: str):
-            try:
-                scraper = get_scraper(key)
-                jobs = scraper.search(keywords, location)
-                # Declarative sources stash a SourceResult with real diagnostics.
-                return key, jobs, getattr(scraper, "last_result", None)
-            except Exception as exc:  # keep the scan alive on a single failure
-                return key, exc, None
+        keys = [SOURCE_KEYS.get(s, s.lower().replace(" ", "")) for s in self.selected_sources]
+        definitions = resolve_selection([k for k in keys if k])
+        if not definitions:
+            definitions = resolve_selection(["remoteok"])
 
-        self._log(f"Searching {total} source(s) in parallel…", "active")
-        with ThreadPoolExecutor(max_workers=min(total, 4)) as pool:
-            futures = {pool.submit(run_one, key): key for key in sources}
-            for future in as_completed(futures):
-                key, result, diag = future.result()
-                done += 1
-                if isinstance(result, Exception):
-                    self._log(f"{key} — failed ({type(result).__name__})", "done")
-                elif diag is not None and diag.status not in ("done",):
-                    # Surface HTTP status + error class + timestamp — no silent failures.
-                    self._log(
-                        f"{key} — {diag.status}"
-                        f" ({diag.error_class or 'error'}"
-                        f"{f' HTTP {diag.http_status}' if diag.http_status else ''})"
-                        f" · {diag.finished_at[11:19]}",
-                        "done",
-                    )
-                else:
-                    collected.extend(result)
-                    self._log(f"{key} — {len(result)} listings ({len(collected)} total)", "done")
-                self.progress_signal.emit(30 + int(45 * done / total))
-                if self._stopped:
-                    pool.shutdown(wait=False, cancel_futures=True)
-                    break
-        return collected
+        self._cancel = CancelToken()
+        criteria = SearchCriteria.from_legacy(keywords, location)
+        engine = ScanEngine(RunConfig.load(), on_event=self._on_engine_event,
+                            cancel=self._cancel)
+        self._log(f"Searching {len(definitions)} source(s)…", "active")
+        summary = self._engine_summary = engine.run(definitions, criteria)
+        self._log(
+            f"Found {summary.total_jobs} unique jobs · "
+            f"{summary.sources_succeeded}/{summary.sources_attempted} sources ok"
+            + (f" · {summary.sources_blocked} blocked" if summary.sources_blocked else ""),
+            "done",
+        )
+        return summary.jobs
+
+    def _on_engine_event(self, event) -> None:
+        """Forward engine events to the run view. Runs on engine pool threads —
+        Qt queues the signals to the UI thread."""
+        from core.engine import events as ev
+        t = event.type
+        if t == ev.SOURCE_QUEUED:
+            self.source_event.emit(event.source, "queued", 0)
+        elif t == ev.SOURCE_RUNNING:
+            self.source_event.emit(event.source, "running", 0)
+        elif t == ev.SOURCE_DONE:
+            p = event.payload
+            self.source_event.emit(event.source, p["status"], p["jobs"])
+            if p["status"] != "done":
+                detail = p.get("error_class") or "error"
+                http = f" HTTP {p['http_status']}" if p.get("http_status") else ""
+                self._log(f"{event.source} — {p['status']} ({detail}{http})", "done")
+            else:
+                self._log(f"{event.source} — {p['jobs']} listings", "done")
+        elif t == ev.PROGRESS:
+            pl = event.payload
+            self.stats_signal.emit(pl["done"], pl["total"], 0)
+            self.progress_signal.emit(30 + int(45 * pl["done"] / max(1, pl["total"])))
+        elif t == ev.WIDENED:
+            self._log(f"Widened search — {event.payload['description']}", "done")

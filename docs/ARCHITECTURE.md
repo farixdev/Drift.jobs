@@ -132,3 +132,48 @@ keychain, never in the database.
 **Verified live.** All 8 model endpoints probed 2026-08-10; the full stack
 (list_models → structured completion with schema repair → cost metering) was run
 end-to-end against Groq with the install's real key.
+
+---
+
+## Execution engine (Phase 7)
+
+The concurrent orchestration layer between search criteria and sources
+(`core/engine/`). Replaces the 1.x `ScanWorker` fan-out.
+
+```
+core/engine/
+├── config.py        RunConfig (concurrency, timeouts, min/max results, proxy) + clamp/load/save
+├── cancellation.py  CancelToken (cooperative, threading.Event) + Cancelled
+├── ratelimit.py     TokenBucket + DomainLimiter (per-host bucket + concurrency semaphore)
+├── events.py        RunEvent stream + RunSummary
+├── checkpoint.py    run / run_source_result persistence + raw-job upsert (durable partials)
+└── engine.py        ScanEngine.run() — pool, priority, streaming, widening
+```
+
+**What it does:** orders sources by priority (clean APIs first, browser last),
+runs them through a bounded pool (default 12, 1–64) with per-domain token-bucket
+rate limiting, streams each source's results the moment it returns (`on_event`),
+persists a checkpoint after every source, honours a global timeout and per-source
+timeout, and supports cooperative cancellation. Retries (429/5xx/timeout only,
+backoff + full jitter, honouring Retry-After) live in `core/sources/http.py`; the
+per-source circuit breaker is reused from `core/sources/health.py`. When
+`min_results` isn't met it **widens** the query (drops the most-specific keyword,
+then the remote filter) and reruns, reporting exactly what was relaxed.
+
+**Uniform sources:** the engine runs both declarative ATS definitions
+(`run_source`) and the legacy first-party feeds (`run_legacy`, wrapped as
+definitions in `core/sources/legacy.py`) through the same pool/priority/breaker/
+streaming path. `resolve_selection(keys)` maps UI source keys to definitions.
+
+**Integration:** `ScanWorker` (`ui/worker.py`) builds a `SearchCriteria`, runs
+the engine, and forwards its event stream to the **live run view**
+(`ui/screen_run.py`) — per-source rows (queued → running → done/failed/blocked)
+with live counts, an overall progress bar, elapsed time, a collapsing log, and a
+cancel button, built on the Phase-1 components. Checkpoints land in the Phase-2
+`run` / `run_source_result` tables; `done_sources(run_id)` lets a resumed run skip
+completed sources.
+
+**Verified:** live run of the 4 ATS sources through the engine (81 unique jobs,
+streamed, checkpointed); full worker→engine→run-view wiring (66 jobs, source
+events). 11 engine tests cover config, token bucket, cancellation, priority,
+streaming, checkpoint+resume, and widening.
