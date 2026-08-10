@@ -50,24 +50,32 @@ def save_source_result(run_id: int, rsr_id: int, result) -> None:
             (result.status, result.duration_ms, len(result.jobs),
              result.error_class, result.error_detail, result.http_status, rsr_id),
         )
+        from core.normalize import normalize_job
         for raw in result.jobs:
             sid = _source_id(conn, raw.source)
+            # Normalize so the checkpoint uses the SAME content fingerprint the
+            # final scored upsert will — no duplicate rows across the two writes.
+            nj = normalize_job(raw)
             conn.execute(
                 """
                 INSERT INTO job (fingerprint, title, company_name, location_raw,
-                                 description_text, work_mode, employment_type,
-                                 salary_currency, apply_url, canonical_url, source_id,
+                                 location_city, location_region, location_country,
+                                 work_mode, employment_type, description_text,
+                                 salary_min, salary_max, salary_currency,
+                                 apply_url, canonical_url, source_id,
                                  first_seen_at, last_seen_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, datetime('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                 ON CONFLICT(fingerprint) DO UPDATE SET
                     last_seen_at=datetime('now'), title=excluded.title,
                     company_name=excluded.company_name, location_raw=excluded.location_raw,
                     description_text=excluded.description_text, apply_url=excluded.apply_url,
                     source_id=excluded.source_id
                 """,
-                (raw.id, raw.title, raw.company, raw.location, (raw.description or "")[:8000],
-                 "remote" if raw.remote else "unspecified", raw.job_type or "",
-                 raw.url, raw.url, sid),
+                (nj.fingerprint, nj.title, nj.company_name, nj.location_raw,
+                 nj.location_city, nj.location_region, nj.location_country,
+                 nj.work_mode, nj.employment_type, nj.description_text,
+                 nj.salary_min, nj.salary_max, nj.salary_currency,
+                 nj.apply_url, nj.canonical_url, sid),
             )
 
 

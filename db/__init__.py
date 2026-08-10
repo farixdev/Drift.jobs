@@ -33,33 +33,39 @@ DB_PATH = connection.DB_PATH
 # Initialisation
 # --------------------------------------------------------------------------- #
 def _needs_backup(path: Path) -> bool:
-    """True when an existing DB predates Phase 2 (has legacy `jobs`, no
-    `_migration`), so we file-copy it before the destructive m002 runs."""
+    """True when an existing, non-fresh database has pending migrations — so we
+    file-copy it before any potentially destructive migration (m002 import,
+    m005 fingerprint merge, …) runs. A fresh/absent DB needs no backup."""
     if not path.is_file():
         return False
     try:
+        from db.migrations import LATEST_VERSION
         with closing(sqlite3.connect(str(path))) as probe:
-            has_jobs = probe.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='jobs'"
+            has_data = probe.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('jobs','job')"
             ).fetchone()
-            has_mig = probe.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='_migration'"
+            row = probe.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='_migration'"
             ).fetchone()
-        return bool(has_jobs) and not has_mig
+            applied = 0
+            if row is not None:
+                r = probe.execute("SELECT MAX(version) v FROM _migration").fetchone()
+                applied = (r["v"] if r and r["v"] is not None else 0) if False else (r[0] or 0)
+        return bool(has_data) and applied < LATEST_VERSION
     except sqlite3.Error:
         return False
 
 
 def _backup(path: Path) -> Path:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dest = path.with_suffix(f".db.bak.pre-phase2-{stamp}")
+    dest = path.with_suffix(f".db.bak.pre-migration-{stamp}")
     shutil.copy2(path, dest)
     return dest
 
 
 def init_db() -> None:
     """Bring the database up to the latest schema. Idempotent; safe to call on
-    every scan. Backs up a pre-Phase-2 database before touching it."""
+    every scan. Backs up a non-fresh database before applying pending migrations."""
     path = connection.DB_PATH
     if _needs_backup(path):
         _backup(path)

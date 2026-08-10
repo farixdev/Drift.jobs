@@ -80,6 +80,7 @@ def score_all(
     max_llm: int | None = None,
     keywords: list[str] | None = None,
     log: Callable[[str], None] | None = None,
+    meta_by_id: dict | None = None,
 ) -> list[Job]:
     if not raw_jobs:
         return []
@@ -144,8 +145,10 @@ def score_all(
         scored.sort(key=lambda pair: pair[1]["score"], reverse=True)
 
     # 3) Materialise Job objects (all of them; the UI filters by threshold live).
+    meta_by_id = meta_by_id or {}
     jobs: list[Job] = []
     for raw, item in scored:
+        meta = meta_by_id.get(raw.id, {})
         jobs.append(
             Job(
                 title=raw.title,
@@ -164,6 +167,9 @@ def score_all(
                 posted=raw.posted,
                 remote=raw.remote,
                 scraped_at=datetime.now(),
+                fingerprint=meta.get("fingerprint", ""),
+                alt_urls=meta.get("alt_urls", []),
+                seen_count=meta.get("seen_count", 1),
             )
         )
     return jobs

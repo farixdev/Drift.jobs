@@ -193,18 +193,26 @@ def _make_legacy_db(path):
 
 def test_legacy_import_preserves_user_state(dbpath):
     _make_legacy_db(dbpath)
-    db.init_db()  # backup + migrate + import
+    db.init_db()  # backup + migrate (incl. m005 fingerprint recompute) + import
 
     with closing(connect()) as conn:
-        # Every legacy job became a canonical job row.
-        fps = {r["fingerprint"] for r in conn.execute("SELECT fingerprint FROM job")}
-        assert {"fp_saved", "fp_applied", "fp_dismissed", "fp_new", "fp_orphan"} <= fps
+        # m005 recomputed the URL-hash fingerprints into content fingerprints;
+        # the alias table maps the old ids to the new ones. State must survive.
+        alias = {r["old_fingerprint"]: r["new_fingerprint"]
+                 for r in conn.execute("SELECT * FROM fingerprint_alias")}
 
-        # Actioned jobs got application rows with the right status; 'new' did not.
-        def status(fp):
+        def new_fp(old):
+            return alias.get(old, old)
+
+        # Every legacy job is still present (now under its content fingerprint).
+        fps = {r["fingerprint"] for r in conn.execute("SELECT fingerprint FROM job")}
+        assert {new_fp(x) for x in ("fp_saved", "fp_applied", "fp_dismissed",
+                                    "fp_new", "fp_orphan")} <= fps
+
+        def status(old):
             row = conn.execute(
                 "SELECT a.status FROM application a JOIN job j ON j.id=a.job_id "
-                "WHERE j.fingerprint=?", (fp,)
+                "WHERE j.fingerprint=?", (new_fp(old),)
             ).fetchone()
             return row["status"] if row else None
 
@@ -213,24 +221,20 @@ def test_legacy_import_preserves_user_state(dbpath):
         assert status("fp_dismissed") == STATUS_DISMISSED
         assert status("fp_new") is None      # implicit 'new' -> no application row
 
-        # Applied job carries an applied_at (copied from last_seen).
         applied_at = conn.execute(
             "SELECT a.applied_at FROM application a JOIN job j ON j.id=a.job_id "
-            "WHERE j.fingerprint='fp_applied'"
+            "WHERE j.fingerprint=?", (new_fp("fp_applied"),)
         ).fetchone()["applied_at"]
         assert applied_at == "2026-01-04"
 
-        # Cover letter preserved and linked.
-        body = db.get_cover_letter("fp_applied")
-        assert body == "Dear team..."
+        # Cover letter preserved and linked (looked up by the new fingerprint).
+        assert db.get_cover_letter(new_fp("fp_applied")) == "Dear team..."
 
         # Orphan flagged legacy=1; full rows are legacy=0.
-        assert conn.execute(
-            "SELECT legacy FROM job WHERE fingerprint='fp_orphan'"
-        ).fetchone()["legacy"] == 1
-        assert conn.execute(
-            "SELECT legacy FROM job WHERE fingerprint='fp_saved'"
-        ).fetchone()["legacy"] == 0
+        assert conn.execute("SELECT legacy FROM job WHERE fingerprint=?",
+                            (new_fp("fp_orphan"),)).fetchone()["legacy"] == 1
+        assert conn.execute("SELECT legacy FROM job WHERE fingerprint=?",
+                            (new_fp("fp_saved"),)).fetchone()["legacy"] == 0
 
         # Legacy tables are gone.
         assert "jobs" not in _table_names(conn)
@@ -240,7 +244,7 @@ def test_legacy_import_preserves_user_state(dbpath):
 def test_legacy_import_writes_a_backup(dbpath):
     _make_legacy_db(dbpath)
     db.init_db()
-    backups = list(dbpath.parent.glob("*.bak.pre-phase2-*"))
+    backups = list(dbpath.parent.glob("*.bak.pre-migration-*"))
     assert len(backups) == 1
     # Backup still holds the original legacy schema.
     with closing(sqlite3.connect(str(backups[0]))) as conn:
@@ -251,7 +255,7 @@ def test_legacy_import_writes_a_backup(dbpath):
 
 def test_fresh_install_needs_no_backup(dbpath):
     db.init_db()  # no legacy DB present
-    assert list(dbpath.parent.glob("*.bak.pre-phase2-*")) == []
+    assert list(dbpath.parent.glob("*.bak.pre-migration-*")) == []
     assert db.schema_version() == LATEST_VERSION
 
 

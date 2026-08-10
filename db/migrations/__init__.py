@@ -16,11 +16,12 @@ from db.migrations import (
     m002_import_legacy,
     m003_ai_cache_usage,
     m004_source_breaker,
+    m005_content_fingerprint,
 )
 
 # Ordered by VERSION. New migrations go on the end.
 ALL_MIGRATIONS = [m001_initial_schema, m002_import_legacy, m003_ai_cache_usage,
-                  m004_source_breaker]
+                  m004_source_breaker, m005_content_fingerprint]
 
 LATEST_VERSION = max(m.VERSION for m in ALL_MIGRATIONS)
 

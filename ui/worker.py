@@ -3,7 +3,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from core import ai_engine, local_engine, matcher, parser
 from core.config import load_env
 from core.scraper import get_custom_scraper
-from db import dedupe_by_url, dismissed_ids, init_db, known_ids, record_seen, statuses_for
+from db import dismissed_ids, init_db, known_ids, record_seen, statuses_for
 from models import STATUS_NEW
 
 # Legacy label -> key mapping (setup screen now emits keys directly).
@@ -86,25 +86,57 @@ class ScanWorker(QThread):
             if self._stopped:
                 self._log("Stopped — scoring what we found so far…", "active")
 
-            all_jobs = dedupe_by_url(all_jobs)
+            # Phase 8: normalize every result to the canonical schema and cluster
+            # duplicates (the same role posted to many boards) into one record.
+            from core.dedup import normalize_and_cluster
+            from core.scraper.base import RawJob
+            from core.scraper.util import human_date, money
 
-            # Drop jobs the user already dismissed in a previous scan.
+            clustered = normalize_and_cluster(all_jobs)
+            multi = sum(1 for nj in clustered if nj.seen_count > 1)
+            self._log(
+                f"Normalized + deduped — {len(all_jobs)} → {len(clustered)} unique roles"
+                + (f" ({multi} seen on multiple sites)" if multi else ""),
+                "done",
+            )
+
+            # Drop jobs the user already dismissed (matched by content fingerprint).
             dismissed = dismissed_ids()
             if dismissed:
-                before = len(all_jobs)
-                all_jobs = [j for j in all_jobs if j.id not in dismissed]
-                hidden = before - len(all_jobs)
+                before = len(clustered)
+                clustered = [nj for nj in clustered if nj.fingerprint not in dismissed]
+                hidden = before - len(clustered)
                 if hidden:
                     self._log(f"Hid {hidden} previously dismissed job(s)", "done")
 
             prior = known_ids()  # what we'd seen before THIS scan
 
-            self._log(f"Scoring {len(all_jobs)} jobs…", "active")
+            # Convert clusters to RawJob for the scorer; carry cluster meta by id.
+            raw_for_score: list = []
+            meta_by_id: dict = {}
+            for nj in clustered:
+                sym = {"USD": "$", "GBP": "£", "EUR": "€"}.get(nj.salary_currency, "$")
+                salary = money(nj.salary_min, nj.salary_max).replace("$", sym) \
+                    if (nj.salary_min or nj.salary_max) else ""
+                rj = RawJob(
+                    title=nj.title, company=nj.company_name,
+                    location=nj.location_raw or nj.location_city
+                    or ("Remote" if nj.work_mode == "remote" else ""),
+                    description=nj.description_text,
+                    url=nj.canonical_url or nj.apply_url, source=nj.source,
+                    job_type=nj.employment_type, salary=salary,
+                    posted=human_date(nj.posted_at) if nj.posted_at else "",
+                    remote=(nj.work_mode == "remote"), rich=True)
+                raw_for_score.append(rj)
+                meta_by_id[rj.id] = {"fingerprint": nj.fingerprint,
+                                     "alt_urls": nj.alt_urls, "seen_count": nj.seen_count}
+
+            self._log(f"Scoring {len(raw_for_score)} jobs…", "active")
             self.progress_signal.emit(80)
             use_llm = ai_engine.has_api_key()
             scored = matcher.score_all(
-                all_jobs, resume_text, skills=skills, use_llm=use_llm,
-                keywords=keywords, log=self._log,
+                raw_for_score, resume_text, skills=skills, use_llm=use_llm,
+                keywords=keywords, log=self._log, meta_by_id=meta_by_id,
             )
 
             # Annotate new-vs-seen + persisted status, then remember them.

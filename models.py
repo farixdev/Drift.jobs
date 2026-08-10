@@ -43,7 +43,15 @@ class Job:
     is_new: bool = True
     cover_letter: str = ""
     scraped_at: datetime = field(default_factory=datetime.now)
+    # Phase 8: content-based identity + dedup cluster info.
+    fingerprint: str = ""
+    alt_urls: List[str] = field(default_factory=list)
+    seen_count: int = 1
+    # Phase 8 ranking: per-dimension sub-scores + rationale (explainable scoring).
+    subscores: dict = field(default_factory=dict)
+    rationale: str = ""
 
     @property
     def job_id(self) -> str:
-        return job_fingerprint(self.url, self.title, self.company)
+        # Prefer the content fingerprint (Phase 8); fall back to the URL hash.
+        return self.fingerprint or job_fingerprint(self.url, self.title, self.company)

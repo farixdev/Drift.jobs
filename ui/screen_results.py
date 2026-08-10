@@ -79,6 +79,10 @@ class JobCard(QFrame):
         title_row.addWidget(title, 1)
         if job.is_new:
             title_row.addWidget(chip("NEW", styles.NEW_BG, styles.NEW_TEXT), 0, Qt.AlignTop)
+        if getattr(job, "seen_count", 1) > 1:
+            title_row.addWidget(
+                chip(f"seen on {job.seen_count} sites", styles.LOC_BG, styles.LOC_TEXT),
+                0, Qt.AlignTop)
         left.addLayout(title_row)
 
         meta_parts = [job.company, job.location or ("Remote" if job.remote else "")]
