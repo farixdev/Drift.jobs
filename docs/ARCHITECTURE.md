@@ -292,3 +292,32 @@ review workflow (26 agents) that surfaced 20 confirmed defects — all high/medi
 fixed with regression tests, including null-array crashes in `from_dict`, a
 weight-vs-count coverage bug, dead-code degree logic, and the safety-net gaps
 above.
+
+---
+
+## Application tracker + Dashboard (Phases 9–10)
+
+```
+core/tracker.py     Kanban pipeline, stage moves, notes/next-action, funnel metrics, export
+core/dashboard.py   summary / source_health / recent_jobs / recent_runs aggregation
+ui/screen_tracker.py · screen_dashboard.py · screen_sources.py · screen_runs.py
+```
+
+**Tracker (Phase 9):** the `application` table drives a Kanban board (Saved →
+Applied → Screening → Interview → Offer → Rejected/Withdrawn) with real
+drag-between-columns, per-application notes / next-action / due, funnel metrics
+(response/interview/offer rate, avg days to response, by source), and CSV/JSON
+export.
+
+**Dashboard + navigation (Phase 10):** the app shell is now a **sidebar**
+(Dashboard, Search, Jobs, Applications, Résumés, Sources, Runs, Settings) + a
+content stack, replacing the linear flow. The Dashboard home shows metric tiles,
+source-health (anything degraded/disabled), recent scored jobs, upcoming
+follow-ups, token spend, and quick actions. The **Sources** page lists every
+adapter with health, success rate, avg latency, avg jobs, and a live "Test"
+button; the **Runs** page shows scan history. The scan flow (Search → run view →
+Jobs) runs inside the shell.
+
+The full multi-provider Settings matrix (Phase 3's provider UI) remains the
+basic Groq dialog for now — the provider engine supports the rest; the matrix UI
+is the main outstanding UI surface.
