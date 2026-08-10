@@ -93,6 +93,17 @@ class ScanWorker(QThread):
                     self._criteria.keywords = keywords
                 if not self._criteria.location:
                     self._criteria.location = location
+                # The user may have edited location/skills on the Search screen —
+                # let those drive the query AND the ranking, not just the résumé.
+                eff = self._criteria.effective_keywords()
+                if eff:
+                    keywords = eff
+                    skills = list(dict.fromkeys(list(eff) + list(skills)))
+                    self.parsed_skills = skills
+                if self._criteria.location:
+                    location = self._criteria.location
+                self._log(f"Searching for — {', '.join(keywords[:6])}"
+                          + (f" · {location}" if location else ""), "done")
             else:
                 self._criteria = SearchCriteria(
                     keywords=keywords, location=location,
@@ -154,11 +165,14 @@ class ScanWorker(QThread):
                 job.status = status_map.get(job.job_id, STATUS_NEW)
             record_seen(scored)
 
-            above = sum(1 for j in scored if j.score >= self.threshold)
-            self._log(
-                f"Done — {above} match {self.threshold}%+ · {len(scored)} scored total",
-                "done",
-            )
+            if self.threshold > 0:
+                above = sum(1 for j in scored if j.score >= self.threshold)
+                self._log(
+                    f"Done — {len(scored)} jobs found · {above} at {self.threshold}%+ match",
+                    "done",
+                )
+            else:
+                self._log(f"Done — {len(scored)} jobs found, sorted by match score", "done")
             self.progress_signal.emit(100)
             self.done_signal.emit(scored)
         except Exception as exc:

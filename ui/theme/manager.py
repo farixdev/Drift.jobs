@@ -109,7 +109,7 @@ class ThemeManager(QObject):
 
     # -- fonts ------------------------------------------------------------- #
     def font(self, role: str = "body", *, weight: int | None = None) -> QFont:
-        size, _line, w, spacing_em = tokens.TYPE_SCALE.get(role, tokens.TYPE_SCALE["body"])
+        size, _line, w, _spacing = tokens.TYPE_SCALE.get(role, tokens.TYPE_SCALE["body"])
         f = QFont()
         try:
             f.setFamilies(tokens.FONT_STACK)
@@ -117,8 +117,10 @@ class ThemeManager(QObject):
             f.setFamily(tokens.FONT_STACK[0])
         f.setPixelSize(size)
         f.setWeight(_WEIGHT_MAP.get(weight or w, QFont.Normal))
-        if spacing_em:
-            f.setLetterSpacing(QFont.AbsoluteSpacing, spacing_em * size)
+        f.setHintingPreference(QFont.PreferFullHinting)
+        # NOTE: the design tokens carry macOS-style negative tracking, but Segoe
+        # UI (the Windows fallback) renders it as overlapping/glitchy glyphs, so
+        # letter-spacing is intentionally NOT applied here.
         return f
 
     def line_height(self, role: str) -> int:

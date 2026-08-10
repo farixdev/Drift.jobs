@@ -96,16 +96,17 @@ class DriftApp(QMainWindow):
                 scr.topbar.settings_clicked.connect(self._open_settings)
 
         # Build the nav (auto-selects the first item → shows Dashboard).
-        self.sidebar.add_item("dashboard", "Dashboard", "◫")
-        self.sidebar.add_item("search", "Search", "⌕")
-        self.sidebar.add_item("jobs", "Jobs", "≣")
-        self.sidebar.add_item("applications", "Applications", "▤")
+        # Glyphs are Segoe Fluent / MDL2 icon-font codepoints (crisp line icons).
+        self.sidebar.add_item("dashboard", "Dashboard", "")     # Home
+        self.sidebar.add_item("search", "Search", "")           # Search
+        self.sidebar.add_item("jobs", "Jobs", "")              # List
+        self.sidebar.add_item("applications", "Applications", "")  # Trackers
         self.sidebar.add_section("Library")
-        self.sidebar.add_item("resumes", "Résumés", "▢")
-        self.sidebar.add_item("sources", "Sources", "◆")
-        self.sidebar.add_item("runs", "Runs", "↻")
+        self.sidebar.add_item("resumes", "Résumés", "")        # Document
+        self.sidebar.add_item("sources", "Sources", "")        # Globe
+        self.sidebar.add_item("runs", "Runs", "")             # History
         self.sidebar.add_stretch()
-        self.sidebar.add_item("settings", "Settings", "⚙")
+        self.sidebar.add_item("settings", "Settings", "")      # Settings
 
         QShortcut(QKeySequence("Ctrl+Shift+D"), self,
                   activated=lambda: self.stack.setCurrentWidget(self.design_screen))

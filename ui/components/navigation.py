@@ -11,9 +11,24 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from PyQt5.QtGui import QFont, QFontDatabase
+
 from ui.components.base import Themed
 from ui.components.display import Badge
 from ui.theme import theme, tokens
+
+
+def icon_font(size: int = 15) -> QFont:
+    """Windows' built-in icon font (crisp line icons) with graceful fallback."""
+    fams = set(QFontDatabase().families())
+    for name in ("Segoe Fluent Icons", "Segoe MDL2 Assets", "Segoe UI Symbol"):
+        if name in fams:
+            f = QFont(name)
+            f.setPixelSize(size)
+            return f
+    f = QFont()
+    f.setPixelSize(size)
+    return f
 
 
 class _NavItem(QPushButton, Themed):
@@ -32,8 +47,10 @@ class _NavItem(QPushButton, Themed):
         row.setContentsMargins(10, 0, 10, 0)
         row.setSpacing(10)
         self._glyph_lbl = QLabel(glyph)
-        self._glyph_lbl.setFixedWidth(18)
+        self._glyph_lbl.setFixedWidth(20)
         self._glyph_lbl.setAlignment(Qt.AlignCenter)
+        if glyph and ord(glyph[0]) >= 0xE000:   # a Segoe icon-font codepoint
+            self._glyph_lbl.setFont(icon_font(15))
         row.addWidget(self._glyph_lbl)
         self._text_lbl = QLabel(label)
         self._text_lbl.setFont(theme().font("subhead", weight=500))

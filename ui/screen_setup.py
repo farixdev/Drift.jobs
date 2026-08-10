@@ -22,8 +22,8 @@ from ui.widgets import SourceCheckbox, TopBar
 
 
 class SetupScreen(QWidget):
-    # emits: resume_path, source_keys, threshold, resume_text, custom_url
-    start_scan = pyqtSignal(str, list, int, str, str)
+    # emits: resume_path, source_keys, threshold, resume_text, custom_url, criteria
+    start_scan = pyqtSignal(str, list, int, str, str, object)
     open_builder = pyqtSignal()
 
     def __init__(self, parent=None):
@@ -53,7 +53,47 @@ class SetupScreen(QWidget):
         self.upload_zone.clicked.connect(self._browse_resume)
         self._set_upload_idle()
         body.addWidget(self.upload_zone)
-        body.addSpacing(20)
+        body.addSpacing(16)
+
+        # --- Editable résumé-derived search inputs (hidden until a résumé loads).
+        self.resume_info = QWidget()
+        info = QVBoxLayout(self.resume_info)
+        info.setContentsMargins(14, 12, 14, 12)
+        info.setSpacing(8)
+        self.resume_info.setStyleSheet(
+            f"QWidget{{ background:{styles.SURFACE}; border:1px solid {styles.BORDER};"
+            f" border-radius:12px; }}"
+        )
+        info_head = QLabel("From your résumé — edit anything")
+        info_head.setStyleSheet(
+            f"color:{styles.TEXT_PRIMARY}; font-size:13px; font-weight:600; border:none;"
+        )
+        info.addWidget(info_head)
+
+        loc_lbl = QLabel("Location to search")
+        loc_lbl.setStyleSheet(
+            f"color:{styles.TEXT_SECONDARY}; font-size:12px; font-weight:500; border:none;")
+        info.addWidget(loc_lbl)
+        self.location_input = QLineEdit()
+        self.location_input.setPlaceholderText("e.g. Remote, Toronto, London")
+        self.location_input.setFixedHeight(34)
+        info.addWidget(self.location_input)
+
+        skills_lbl = QLabel("Skills & keywords")
+        skills_lbl.setStyleSheet(
+            f"color:{styles.TEXT_SECONDARY}; font-size:12px; font-weight:500; border:none;")
+        info.addWidget(skills_lbl)
+        self.skills_input = QLineEdit()
+        self.skills_input.setPlaceholderText("python, react, sql — comma separated")
+        self.skills_input.setFixedHeight(34)
+        info.addWidget(self.skills_input)
+        skills_hint = QLabel("Add or remove any — these drive what we search for and match.")
+        skills_hint.setStyleSheet(f"color:{styles.TEXT_TERTIARY}; font-size:11px; border:none;")
+        info.addWidget(skills_hint)
+
+        self.resume_info.setVisible(False)
+        body.addWidget(self.resume_info)
+        body.addSpacing(16)
 
         custom_label = QLabel("Custom job site (optional)")
         custom_label.setStyleSheet(
@@ -97,31 +137,35 @@ class SetupScreen(QWidget):
         body.addSpacing(20)
 
 
-        slider_label = QLabel("Minimum match score")
+        slider_label = QLabel("Minimum match score — optional")
         slider_label.setStyleSheet(
             f"color:{styles.TEXT_SECONDARY}; font-size:12px; font-weight:500;"
         )
         body.addWidget(slider_label)
 
         slider_row = QHBoxLayout()
-        low = QLabel("Low")
+        low = QLabel("All")
         low.setStyleSheet(f"color:{styles.TEXT_SECONDARY}; font-size:12px;")
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setMinimum(0)
         self.slider.setMaximum(95)
-        self.slider.setValue(40)
+        self.slider.setValue(0)   # 0 = show every matching job (scoring is a sort, not a gate)
         self.slider.valueChanged.connect(self._update_threshold_label)
         high = QLabel("High")
         high.setStyleSheet(f"color:{styles.TEXT_SECONDARY}; font-size:12px;")
-        self.threshold_label = QLabel("70%")
+        self.threshold_label = QLabel("All")
         self.threshold_label.setStyleSheet(
-            f"color:{styles.TEXT_PRIMARY}; font-size:13px; font-weight:500; min-width:36px;"
+            f"color:{styles.TEXT_PRIMARY}; font-size:13px; font-weight:500; min-width:40px;"
         )
         slider_row.addWidget(low)
         slider_row.addWidget(self.slider, 1)
         slider_row.addWidget(high)
         slider_row.addWidget(self.threshold_label)
         body.addLayout(slider_row)
+
+        slider_hint = QLabel("Leave at All to see every job matching your skills + location.")
+        slider_hint.setStyleSheet(f"color:{styles.TEXT_TERTIARY}; font-size:11px;")
+        body.addWidget(slider_hint)
         body.addSpacing(24)
 
         self.start_btn = QPushButton("Start scanning")
@@ -254,7 +298,7 @@ class SetupScreen(QWidget):
         )
 
     def _update_threshold_label(self, value: int) -> None:
-        self.threshold_label.setText(f"{value}%")
+        self.threshold_label.setText("All" if value <= 0 else f"{value}%")
 
     def _browse_resume(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -279,13 +323,31 @@ class SetupScreen(QWidget):
             self._set_upload_done(os.path.basename(path))
             self.upload_zone.setToolTip("")
             self.start_btn.setText("Start scanning")
+            self._populate_resume_info(text)
         except Exception as exc:
             self._parsed = False
             self._resume_path = ""
             self._resume_text = ""
+            self.resume_info.setVisible(False)
             self._set_upload_idle()
             self.upload_zone.setToolTip(str(exc))
             self.start_btn.setText(str(exc)[:80])
+
+    def _populate_resume_info(self, text: str) -> None:
+        """Extract location + skills locally and show them as editable fields."""
+        try:
+            from core import local_engine
+            parsed = local_engine.parse_resume(text)
+        except Exception:
+            parsed = {}
+        skills = parsed.get("skills") or []
+        location = parsed.get("location") or ""
+        # only overwrite fields the user hasn't already edited this session
+        if not self.location_input.text().strip():
+            self.location_input.setText(location)
+        if not self.skills_input.text().strip():
+            self.skills_input.setText(", ".join(skills[:24]))
+        self.resume_info.setVisible(True)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -325,4 +387,27 @@ class SetupScreen(QWidget):
             self.slider.value(),
             self._resume_text,
             custom_url,
+            self._build_criteria(selected),
+        )
+
+    def _build_criteria(self, selected: list[str]):
+        """Turn the edited location + skills fields into a SearchCriteria so the
+        scan searches for exactly what the user sees (and can edit)."""
+        skills = [s.strip() for s in self.skills_input.text().split(",") if s.strip()]
+        location = self.location_input.text().strip()
+        if not skills and not location:
+            return None   # nothing edited → worker derives from the résumé itself
+        from core.sources.spec import SearchCriteria
+        mode = "any"
+        if location and location.strip().lower() in ("remote", "anywhere", "worldwide"):
+            mode = "remote"
+        # Skills go in keywords_NICE (matched with ANY-semantics at the source),
+        # never keywords_required (which is an AND filter that would hide almost
+        # every job — the exact "300 found, 3 shown" bug we're fixing).
+        return SearchCriteria(
+            keywords_nice=skills,
+            keywords=skills,
+            location=location,
+            location_mode=mode,
+            sources=list(selected),
         )

@@ -1,7 +1,7 @@
 import webbrowser
 from datetime import datetime
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -34,22 +34,13 @@ from ui.widgets import TopBar, chip
 class ScoreLabel(QLabel):
     def __init__(self, target: int, parent=None):
         super().__init__(parent)
-        self._target = max(0, min(100, target))
-        self._current = 0
+        target = max(0, min(100, target))
         self.setAlignment(Qt.AlignRight)
-        color = styles.verdict_colors(self._target)[1]
+        color = styles.verdict_colors(target)[1]
         self.setStyleSheet(f"font-size:20px; font-weight:600; color:{color};")
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._tick)
-        self._timer.start(16)
-
-    def _tick(self) -> None:
-        if self._current >= self._target:
-            self.setText(f"{self._target}%")
-            self._timer.stop()
-            return
-        self._current += max(1, (self._target - self._current) // 8)
-        self.setText(f"{self._current}%")
+        # Render the real score immediately — no count-up animation. A grid of
+        # numbers spinning up from 0 at once reads as glitchy, not lively.
+        self.setText(f"{target}%")
 
 
 class JobCard(QFrame):
@@ -211,7 +202,7 @@ class ResultsScreen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._jobs: list[Job] = []
-        self._threshold = 70
+        self._threshold = 0          # show everything by default; scoring is a sort
         self._resume_text = ""
         self._skills: list[str] = []
         self._active_filter = None
@@ -256,15 +247,15 @@ class ResultsScreen(QWidget):
         self.search.textChanged.connect(self._on_search)
         body.addWidget(self.search)
 
-        # Threshold slider (live).
+        # Threshold slider (live) — optional. 0 = show every matched job.
         thr_row = QHBoxLayout()
-        thr_lbl = QLabel("Min match")
+        thr_lbl = QLabel("Min score")
         thr_lbl.setStyleSheet(f"color:{styles.TEXT_SECONDARY}; font-size:12px;")
         self.thr_slider = QSlider(Qt.Horizontal)
         self.thr_slider.setRange(0, 95)
-        self.thr_slider.setValue(70)
+        self.thr_slider.setValue(0)
         self.thr_slider.valueChanged.connect(self._on_threshold)
-        self.thr_value = QLabel("70%")
+        self.thr_value = QLabel("All")
         self.thr_value.setStyleSheet(
             f"color:{styles.TEXT_PRIMARY}; font-size:12px; font-weight:600; min-width:34px;"
         )
@@ -331,7 +322,7 @@ class ResultsScreen(QWidget):
         self.thr_slider.blockSignals(True)
         self.thr_slider.setValue(threshold)
         self.thr_slider.blockSignals(False)
-        self.thr_value.setText(f"{threshold}%")
+        self.thr_value.setText("All" if threshold <= 0 else f"{threshold}%")
         self._rebuild()
 
     def _visible_jobs(self) -> list[Job]:
@@ -365,23 +356,26 @@ class ResultsScreen(QWidget):
                 item.widget().deleteLater()
 
         visible = self._visible_jobs()
-        total_above = sum(
-            1 for j in self._jobs
-            if j.score >= self._threshold and j.status != STATUS_DISMISSED
-        )
+        total_active = sum(1 for j in self._jobs if j.status != STATUS_DISMISSED)
         new_count = sum(1 for j in visible if j.is_new)
-        self.count_title.setText(f"{len(visible)} shown · {total_above} above {self._threshold}%")
-        self.count_sub.setText(
-            f"{new_count} new · {len(self._jobs)} scored total" if self._jobs
-            else "no jobs scored"
-        )
+        noun = "job" if len(visible) == 1 else "jobs"
+        if self._threshold <= 0:
+            self.count_title.setText(f"{len(visible)} {noun}")
+        else:
+            self.count_title.setText(f"{len(visible)} {noun} · {self._threshold}%+ match")
+        if self._jobs:
+            filtered = total_active - len(visible)
+            tail = f" · {filtered} below cutoff" if filtered > 0 and self._threshold > 0 else ""
+            self.count_sub.setText(f"{new_count} new · sorted by match score{tail}")
+        else:
+            self.count_sub.setText("no jobs scored")
         self.export_combo.setEnabled(bool(visible))
 
         if not visible:
             empty = QLabel(
                 "Nothing to show here.\n"
-                "Lower the match slider, clear the search, or try another source / a "
-                "different /jobs URL."
+                "Drag the Min score slider to All, clear the search, or try another "
+                "source / a different /jobs URL."
             )
             empty.setWordWrap(True)
             empty.setStyleSheet(f"color:{styles.TEXT_SECONDARY}; font-size:13px;")
@@ -433,7 +427,7 @@ class ResultsScreen(QWidget):
 
     def _on_threshold(self, value: int) -> None:
         self._threshold = value
-        self.thr_value.setText(f"{value}%")
+        self.thr_value.setText("All" if value <= 0 else f"{value}%")
         self._rebuild()
 
     def _set_filter(self, idx: int) -> None:

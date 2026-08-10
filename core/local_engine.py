@@ -29,9 +29,6 @@ _LOCATION_RE = re.compile(
     r"(?i)\b(?:based in|located in|location[:\s]+)\s*"
     r"([A-Za-z][A-Za-z\s,.'-]{2,40})"
 )
-_CITY_COUNTRY_RE = re.compile(
-    r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?,\s*[A-Z][a-z][A-Za-z]+)\b"
-)
 _REMOTE_RE = re.compile(r"(?i)\b(remote|work from home|wfh|hybrid)\b")
 
 # Words that look like "City, Region" captures but are really resume prose/headers.
@@ -54,6 +51,36 @@ _CITIES = (
     "Lahore", "Karachi", "Islamabad", "Rawalpindi", "London", "New York",
     "San Francisco", "Toronto", "Berlin", "Dubai", "Singapore", "Sydney",
     "Mumbai", "Delhi", "Bangalore", "Amsterdam", "Dublin", "Austin",
+)
+_CITIES_LOWER = frozenset(c.lower() for c in _CITIES)
+
+# Countries whose name confirms a "City, Country" candidate is a real place.
+_COUNTRIES = frozenset({
+    "canada", "pakistan", "india", "united states", "usa", "us", "america",
+    "united kingdom", "uk", "england", "scotland", "wales", "ireland",
+    "germany", "france", "spain", "italy", "netherlands", "belgium",
+    "switzerland", "austria", "sweden", "norway", "denmark", "finland",
+    "poland", "portugal", "greece", "turkey", "romania", "czechia",
+    "australia", "new zealand", "singapore", "malaysia", "indonesia",
+    "philippines", "thailand", "vietnam", "japan", "china", "korea",
+    "taiwan", "brazil", "argentina", "chile", "colombia", "mexico",
+    "egypt", "nigeria", "kenya", "south africa", "israel", "saudi arabia",
+    "uae", "united arab emirates", "qatar", "kuwait", "bahrain",
+    "bangladesh", "sri lanka", "nepal", "ukraine", "hungary",
+})
+# US state + Canadian province codes that confirm a "City, XX" candidate.
+_REGION_CODES = frozenset({
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+    "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
+    "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
+    "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+    "WI", "WY", "DC", "ON", "QC", "BC", "AB", "MB", "SK", "NS", "NB", "NL", "PE",
+})
+# Zero-width lookahead so overlapping candidates ("Engineer, Toronto" vs
+# "Toronto, Canada") are BOTH surfaced instead of the first one consuming text.
+_PLACE_RE = re.compile(
+    r"(?=\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2}),\s*"
+    r"([A-Z][A-Za-z.]+|[A-Z]{2})\b)"
 )
 
 
@@ -106,15 +133,24 @@ def extract_skills(resume_text: str) -> list[str]:
 
 
 def extract_location(resume_text: str) -> str:
+    # 1) Explicit "based in / located in / location:" wins.
     m = _LOCATION_RE.search(resume_text)
     if m:
         loc = m.group(1).strip().rstrip(".,;")
         if len(loc) > 2 and not _looks_like_prose(loc):
             return loc
-    for m in _CITY_COUNTRY_RE.finditer(resume_text):
-        loc = m.group(1).strip().rstrip(".,;")
-        if 2 < len(loc) <= 40 and not _looks_like_prose(loc):
-            return loc
+    # 2) A "City, Region" pair — but only if the region is a real place, so
+    #    skill lists like "Python, Django" can never be mistaken for a location.
+    for m in _PLACE_RE.finditer(resume_text):
+        city = m.group(1).strip().rstrip(".,;")
+        region = m.group(2).strip().rstrip(".,;")
+        words = re.findall(r"[A-Za-z]+", f"{city} {region}".lower())
+        if any(w in _LOC_BLOCK for w in words):
+            continue
+        if (region in _REGION_CODES or region.lower() in _COUNTRIES
+                or city.lower() in _CITIES_LOWER):
+            return f"{city}, {region}"
+    # 3) A bare known city.
     for city in _CITIES:
         if re.search(rf"\b{re.escape(city)}\b", resume_text, re.I):
             return city
