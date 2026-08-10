@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 .env
 db/jobs.db
+db/jobs.db-wal
+db/jobs.db-shm
+db/*.bak.*
 .DS_Store
 .pytest_cache/
 .coverage

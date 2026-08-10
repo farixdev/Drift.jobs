@@ -1,49 +1,117 @@
+"""Drift data layer — public API.
+
+The schema is the Phase 2 target (14 tables + FTS5, see db/migrations/). The
+functions below preserve the exact call surface the 1.x UI depends on
+(`ui/worker.py`, `ui/screen_results.py`) but are reimplemented on the new
+`job` / `application` / `cover_letter` tables. This keeps the app running and
+testable across the rewrite (Prime Directive 5) while the storage moves out from
+under it.
+
+Legacy identity: the old string `job_id` is a URL fingerprint. It is stored as
+`job.fingerprint`; the shims translate fingerprint <-> integer `job.id`.
+Status model: a job with no `application` row is implicitly 'new'; acting on a
+job creates/updates its application; un-saving (setting 'new') removes it.
+"""
+from __future__ import annotations
+
+import shutil
 import sqlite3
+from contextlib import closing
+from datetime import datetime
 from pathlib import Path
 
-from models import STATUS_DISMISSED, STATUS_NEW, Job, job_fingerprint
+from db import connection
+from db.connection import connect
+from db.migrations import LATEST_VERSION, current_version, migrate
+from models import STATUS_DISMISSED, STATUS_NEW, Job
 
-DB_PATH = Path(__file__).resolve().parent / "jobs.db"
+# Re-exported so callers can still do `from db import DB_PATH` if needed.
+DB_PATH = connection.DB_PATH
 
 
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+# --------------------------------------------------------------------------- #
+# Initialisation
+# --------------------------------------------------------------------------- #
+def _needs_backup(path: Path) -> bool:
+    """True when an existing DB predates Phase 2 (has legacy `jobs`, no
+    `_migration`), so we file-copy it before the destructive m002 runs."""
+    if not path.is_file():
+        return False
+    try:
+        with closing(sqlite3.connect(str(path))) as probe:
+            has_jobs = probe.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ).fetchone()
+            has_mig = probe.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='_migration'"
+            ).fetchone()
+        return bool(has_jobs) and not has_mig
+    except sqlite3.Error:
+        return False
+
+
+def _backup(path: Path) -> Path:
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = path.with_suffix(f".db.bak.pre-phase2-{stamp}")
+    shutil.copy2(path, dest)
+    return dest
 
 
 def init_db() -> None:
-    with _connect() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS jobs (
-                job_id TEXT PRIMARY KEY,
-                url TEXT,
-                title TEXT,
-                company TEXT,
-                location TEXT,
-                source TEXT,
-                score INTEGER DEFAULT 0,
-                status TEXT DEFAULT 'new',
-                cover_letter TEXT DEFAULT '',
-                first_seen TEXT,
-                last_seen TEXT
-            )
-            """
-        )
-        # Legacy table from 1.x — harmless to keep.
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS seen_jobs (
-                url TEXT PRIMARY KEY, title TEXT, company TEXT,
-                source TEXT, scraped_at TEXT
-            )
-            """
-        )
+    """Bring the database up to the latest schema. Idempotent; safe to call on
+    every scan. Backs up a pre-Phase-2 database before touching it."""
+    path = connection.DB_PATH
+    if _needs_backup(path):
+        _backup(path)
+    with closing(connect()) as conn:
+        migrate(conn)
 
 
-# --- Per-scan dedupe (unchanged public API) --------------------------------
+def schema_version() -> int:
+    with closing(connect()) as conn:
+        return current_version(conn)
 
+
+# --------------------------------------------------------------------------- #
+# Internal helpers
+# --------------------------------------------------------------------------- #
+def _source_id(conn: sqlite3.Connection, slug: str) -> int | None:
+    """Resolve a source slug to its id, creating a minimal row on first sight so
+    `job.source_id` always has a valid target. Phase 6 enriches these rows."""
+    slug = (slug or "").strip()
+    if not slug:
+        return None
+    conn.execute(
+        "INSERT OR IGNORE INTO source(slug, display_name) VALUES (?, ?)",
+        (slug, slug.title()),
+    )
+    row = conn.execute("SELECT id FROM source WHERE slug=?", (slug,)).fetchone()
+    return row["id"] if row else None
+
+
+def _job_id_for(conn: sqlite3.Connection, fingerprint: str) -> int | None:
+    row = conn.execute(
+        "SELECT id FROM job WHERE fingerprint=?", (fingerprint,)
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def _ensure_job(conn: sqlite3.Connection, fingerprint: str) -> int:
+    """Return job.id for a fingerprint, creating a minimal legacy-flagged row if
+    the job was never recorded (mirrors 1.x set_status on an unknown job)."""
+    jid = _job_id_for(conn, fingerprint)
+    if jid is not None:
+        return jid
+    conn.execute(
+        "INSERT OR IGNORE INTO job(fingerprint, legacy) VALUES (?, 1)",
+        (fingerprint,),
+    )
+    return _job_id_for(conn, fingerprint)  # type: ignore[return-value]
+
+
+# --------------------------------------------------------------------------- #
+# Per-scan dedupe (pure — unchanged from 1.x)
+# --------------------------------------------------------------------------- #
 def dedupe_by_url(jobs: list) -> list:
     """Remove duplicate URLs within one scan — does not block rescans."""
     seen: set[str] = set()
@@ -57,90 +125,142 @@ def dedupe_by_url(jobs: list) -> list:
     return fresh
 
 
-# --- Cross-scan state -------------------------------------------------------
-
+# --------------------------------------------------------------------------- #
+# Cross-scan state (reimplemented on job/application)
+# --------------------------------------------------------------------------- #
 def known_ids() -> set[str]:
-    with _connect() as conn:
-        rows = conn.execute("SELECT job_id FROM jobs").fetchall()
-    return {r["job_id"] for r in rows}
+    with closing(connect()) as conn:
+        rows = conn.execute("SELECT fingerprint FROM job").fetchall()
+    return {r["fingerprint"] for r in rows}
 
 
 def statuses_for(ids: list[str]) -> dict[str, str]:
+    """Map each fingerprint to its status. A job with no application row reads as
+    'new' (the 1.x default). Only fingerprints present in `job` are returned."""
     if not ids:
         return {}
     out: dict[str, str] = {}
-    with _connect() as conn:
+    with closing(connect()) as conn:
         for i in range(0, len(ids), 400):
             chunk = ids[i : i + 400]
-            q = ",".join("?" * len(chunk))
+            placeholders = ",".join("?" * len(chunk))
             rows = conn.execute(
-                f"SELECT job_id, status FROM jobs WHERE job_id IN ({q})", chunk
+                f"""
+                SELECT j.fingerprint AS fp, COALESCE(a.status, 'new') AS status
+                  FROM job j
+                  LEFT JOIN application a ON a.job_id = j.id
+                 WHERE j.fingerprint IN ({placeholders})
+                """,
+                chunk,
             ).fetchall()
-            out.update({r["job_id"]: r["status"] for r in rows})
+            out.update({r["fp"]: r["status"] for r in rows})
     return out
 
 
 def dismissed_ids() -> set[str]:
-    with _connect() as conn:
+    with closing(connect()) as conn:
         rows = conn.execute(
-            "SELECT job_id FROM jobs WHERE status = ?", (STATUS_DISMISSED,)
+            """
+            SELECT j.fingerprint AS fp
+              FROM job j JOIN application a ON a.job_id = j.id
+             WHERE a.status = ?
+            """,
+            (STATUS_DISMISSED,),
         ).fetchall()
-    return {r["job_id"] for r in rows}
+    return {r["fp"] for r in rows}
 
 
 def record_seen(jobs: list[Job]) -> None:
-    """Upsert jobs from a scan: preserve status/first_seen, refresh last_seen."""
+    """Upsert scanned jobs: preserve first_seen_at + status, refresh last_seen_at
+    and the re-scrapeable fields. Never creates or alters an application row."""
     if not jobs:
         return
-    with _connect() as conn:
+    with closing(connect()) as conn, conn:
         for job in jobs:
+            sid = _source_id(conn, job.source)
             conn.execute(
                 """
-                INSERT INTO jobs (job_id, url, title, company, location, source,
-                                  score, status, first_seen, last_seen)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-                ON CONFLICT(job_id) DO UPDATE SET
-                    last_seen = datetime('now'),
-                    score = excluded.score,
-                    location = excluded.location
+                INSERT INTO job
+                    (fingerprint, title, company_name, location_raw,
+                     description_text, work_mode, employment_type,
+                     apply_url, canonical_url, source_id,
+                     first_seen_at, last_seen_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                ON CONFLICT(fingerprint) DO UPDATE SET
+                    last_seen_at    = datetime('now'),
+                    title           = excluded.title,
+                    company_name    = excluded.company_name,
+                    location_raw    = excluded.location_raw,
+                    description_text= excluded.description_text,
+                    apply_url       = excluded.apply_url,
+                    canonical_url   = excluded.canonical_url,
+                    source_id       = excluded.source_id
                 """,
                 (
-                    job.job_id, job.url, job.title, job.company, job.location,
-                    job.source, int(job.score), STATUS_NEW,
+                    job.job_id, job.title, job.company, job.location,
+                    (job.description or "")[:8000],
+                    "remote" if job.remote else "unspecified",
+                    job.job_type or "",
+                    job.url, job.url, sid,
                 ),
             )
 
 
 def set_status(job_id: str, status: str) -> None:
-    with _connect() as conn:
+    """Set a job's application status. Setting the 1.x 'new' state removes the
+    application row entirely (i.e. un-save)."""
+    with closing(connect()) as conn, conn:
+        jid = _ensure_job(conn, job_id)
+        if status == STATUS_NEW:
+            conn.execute("DELETE FROM application WHERE job_id = ?", (jid,))
+            return
+        applied_at = datetime.now().isoformat(timespec="seconds") if status == "applied" else None
         conn.execute(
             """
-            INSERT INTO jobs (job_id, status, first_seen, last_seen)
-            VALUES (?, ?, datetime('now'), datetime('now'))
-            ON CONFLICT(job_id) DO UPDATE SET status = excluded.status
+            INSERT INTO application (job_id, status, applied_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(job_id) DO UPDATE SET
+                status = excluded.status,
+                applied_at = COALESCE(application.applied_at, excluded.applied_at),
+                updated_at = datetime('now')
             """,
-            (job_id, status),
+            (jid, status, applied_at),
         )
 
 
 def save_cover_letter(job_id: str, text: str) -> None:
-    with _connect() as conn:
+    """Persist a cover letter for a job and link it to the job's application
+    (creating a minimal 'saved' application if none exists yet)."""
+    with closing(connect()) as conn, conn:
+        jid = _ensure_job(conn, job_id)
+        cur = conn.execute(
+            "INSERT INTO cover_letter(job_id, body) VALUES (?, ?)", (jid, text)
+        )
+        cover_id = cur.lastrowid
         conn.execute(
             """
-            INSERT INTO jobs (job_id, cover_letter, first_seen, last_seen)
-            VALUES (?, ?, datetime('now'), datetime('now'))
-            ON CONFLICT(job_id) DO UPDATE SET cover_letter = excluded.cover_letter
+            INSERT INTO application (job_id, status, cover_letter_id)
+            VALUES (?, 'saved', ?)
+            ON CONFLICT(job_id) DO UPDATE SET
+                cover_letter_id = excluded.cover_letter_id,
+                updated_at = datetime('now')
             """,
-            (job_id, text),
+            (jid, cover_id),
         )
 
 
 def get_cover_letter(job_id: str) -> str:
-    with _connect() as conn:
+    with closing(connect()) as conn:
         row = conn.execute(
-            "SELECT cover_letter FROM jobs WHERE job_id = ?", (job_id,)
+            """
+            SELECT c.body AS body
+              FROM cover_letter c JOIN job j ON j.id = c.job_id
+             WHERE j.fingerprint = ?
+             ORDER BY c.id DESC LIMIT 1
+            """,
+            (job_id,),
         ).fetchone()
-    return (row["cover_letter"] if row else "") or ""
+    return (row["body"] if row else "") or ""
 
 
 def mark_jobs_seen(jobs: list) -> None:
