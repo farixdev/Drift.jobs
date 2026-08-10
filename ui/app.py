@@ -16,6 +16,7 @@ from ui.screen_results import ResultsScreen
 from ui.screen_run import RunScreen
 from ui.screen_search_builder import SearchBuilderScreen
 from ui.screen_setup import SetupScreen
+from ui.screen_tracker import TrackerScreen
 from ui.theme import theme
 from ui.worker import ScanWorker
 
@@ -42,6 +43,7 @@ class DriftApp(QMainWindow):
         self.design_screen = DesignSystemScreen()
         self.builder_screen = SearchBuilderScreen()
         self.resume_screen = ResumeScreen()
+        self.tracker_screen = TrackerScreen()
 
         self.stack.addWidget(self.setup_screen)
         self.stack.addWidget(self.scan_screen)
@@ -49,12 +51,15 @@ class DriftApp(QMainWindow):
         self.stack.addWidget(self.design_screen)
         self.stack.addWidget(self.builder_screen)
         self.stack.addWidget(self.resume_screen)
+        self.stack.addWidget(self.tracker_screen)
 
         self.builder_screen.back.connect(self._go_setup)
         self.builder_screen.run_search.connect(self._run_from_builder)
         self.builder_screen.topbar.settings_clicked.connect(self._open_settings)
         self.resume_screen.back.connect(self._go_setup)
         self.resume_screen.topbar.settings_clicked.connect(self._open_settings)
+        self.tracker_screen.back.connect(self._go_setup)
+        self.tracker_screen.topbar.settings_clicked.connect(self._open_settings)
 
         # Design-system gallery (Ctrl+Shift+D) and command palette (Ctrl+K).
         QShortcut(QKeySequence("Ctrl+Shift+D"), self,
@@ -81,6 +86,7 @@ class DriftApp(QMainWindow):
             ("Go to setup / new scan", self._go_setup),
             ("Open search builder", self._open_search_builder),
             ("Open résumé editor", lambda: self.stack.setCurrentWidget(self.resume_screen)),
+            ("Open application tracker", self._open_tracker),
             ("Open design system", lambda: self.stack.setCurrentWidget(self.design_screen)),
             ("Toggle light / dark theme", theme().toggle),
             ("Open settings", self._open_settings),
@@ -88,6 +94,10 @@ class DriftApp(QMainWindow):
 
     def _open_search_builder(self) -> None:
         self.stack.setCurrentWidget(self.builder_screen)
+
+    def _open_tracker(self) -> None:
+        self.tracker_screen.reload()
+        self.stack.setCurrentWidget(self.tracker_screen)
 
     def _run_from_builder(self, criteria) -> None:
         """Run a scan from the builder using the résumé uploaded on the setup screen."""
