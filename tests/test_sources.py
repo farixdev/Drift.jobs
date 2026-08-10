@@ -174,8 +174,9 @@ class TestCircuitBreaker:
 # Registry & removals
 # --------------------------------------------------------------------------- #
 class TestRegistry:
-    def test_four_ats_defined(self):
-        assert set(DEFINITIONS) == {"greenhouse", "lever", "ashby", "workable"}
+    def test_ats_and_aggregator_sources_defined(self):
+        assert {"greenhouse", "lever", "ashby", "workable"} <= set(DEFINITIONS)   # Tier 1 ATS
+        assert {"himalayas", "workingnomads"} <= set(DEFINITIONS)                 # Tier 2 aggregators
 
     def test_bridge_wraps_declarative_source(self):
         from core.scraper import get_scraper

@@ -30,6 +30,43 @@ Rate limits are self-imposed (120 rpm/host, concurrency 4); these APIs publish n
 hard public quota. Each source has a circuit breaker (5 consecutive failures →
 1-hour cool-off → half-open probe) with health persisted to the `source` table.
 
+## Tier 2 — aggregators (declarative, public APIs)
+
+Key-free remote-job APIs verified live 2026-08-10, robots-allowed for our UA.
+
+| Source | Endpoint | Auth | Descriptions | Verified |
+|---|---|---|---|---|
+| Himalayas | `himalayas.app/jobs/api?limit=N` | none | full + salary + seniority | 2026-08-10 |
+| Working Nomads | `workingnomads.com/api/exposed_jobs/` | none | full HTML + direct apply URL | 2026-08-10 |
+
+## Tier 6 — browser adapter (framework)
+
+A compliance-first Playwright adapter (`core/sources/browser.py`) for sites with
+no API. **Not shipped enabled** — Playwright is not a Drift dependency, so it
+degrades to `skipped` until a user installs it and defines a `BrowserSource`. Its
+guardrails are built and unit-tested: robots check before every browse, human
+pacing (randomized 2–6s, one session per domain, hourly cap), a persistent
+per-site profile (the user logs into their OWN account in a visible window — the
+app never handles the password), an honest user-agent, and — on any 403 / 429 /
+CAPTCHA — it stops, marks the source `blocked`, backs off, and routes to a search
+fallback. It never solves or evades a challenge. Screenshot + DOM snapshot are
+written to `logs/failures/` on any failure.
+
+## Tier 5 — community (bring-your-own-credential)
+
+These are legitimate but require the user's own token/app, so they are documented
+rather than shipped with credentials baked in:
+
+- **Reddit** (r/forhire, r/remotejs, hiring threads) — the official OAuth API with
+  a user-registered app. Free, rate-limited, legitimate. Never scrape old.reddit.
+- **Hacker News** "Who is hiring" — already shipped (Algolia API, no key).
+- **Discord / Slack / Telegram** job channels — via a token the user provides.
+- **X/Twitter** search — where the user holds API access.
+- **GitHub jobs-repos** (`awesome-jobs`-style) — public repo parsing.
+
+Wiring each requires the user's credential in Settings; adding one is the same
+declarative-definition step as any other source.
+
 ## Legacy feeds (first-party, key-free)
 
 | Source | Endpoint | Auth | robots | Verified |
