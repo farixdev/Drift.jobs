@@ -51,7 +51,8 @@ _GROQ_FAST = "llama-3.1-8b-instant"
 _GROQ_SHARP = "llama-3.3-70b-versatile"
 
 DEFAULT_ROUTES: dict[str, Route] = {
-    "resume_parse":    Route("groq", _GROQ_FAST, 0.1, 1200, [{"provider": "groq", "model": _GROQ_SHARP}]),
+    # Faithful structured extraction needs the sharper model; fall back to fast.
+    "resume_parse":    Route("groq", _GROQ_SHARP, 0.1, 2048, [{"provider": "groq", "model": _GROQ_FAST}]),
     "keyword_extract": Route("groq", _GROQ_FAST, 0.2, 600),
     "query_expand":    Route("groq", _GROQ_FAST, 0.3, 600),
     "job_rerank":      Route("groq", _GROQ_SHARP, 0.2, 2048, [{"provider": "groq", "model": _GROQ_FAST}]),

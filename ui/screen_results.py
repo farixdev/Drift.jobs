@@ -53,11 +53,13 @@ class ScoreLabel(QLabel):
 
 
 class JobCard(QFrame):
-    def __init__(self, job: Job, on_status, on_cover, parent=None):
+    def __init__(self, job: Job, on_status, on_cover, on_tailor=None, on_breakdown=None, parent=None):
         super().__init__(parent)
         self.job = job
         self._on_status = on_status
         self._on_cover = on_cover
+        self._on_tailor = on_tailor
+        self._on_breakdown = on_breakdown
         self.setStyleSheet(
             f"QFrame {{ background:{styles.RAISED}; border:1px solid {styles.BORDER};"
             f" border-radius:12px; }}"
@@ -146,6 +148,14 @@ class JobCard(QFrame):
         cover_btn.clicked.connect(lambda: self._on_cover(self.job))
         actions.addWidget(apply_btn)
         actions.addWidget(cover_btn)
+        if self._on_breakdown:
+            bd = self._ghost("≡ Breakdown")
+            bd.clicked.connect(lambda: self._on_breakdown(self.job))
+            actions.addWidget(bd)
+        if self._on_tailor:
+            tl = self._ghost("⎘ Tailor")
+            tl.clicked.connect(lambda: self._on_tailor(self.job))
+            actions.addWidget(tl)
         actions.addStretch()
 
         self.save_btn = self._ghost("★ Save")
@@ -379,7 +389,8 @@ class ResultsScreen(QWidget):
             return
 
         for job in visible:
-            card = JobCard(job, self._change_status, self._open_cover)
+            card = JobCard(job, self._change_status, self._open_cover,
+                          on_tailor=self._open_tailor, on_breakdown=self._open_breakdown)
             self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
 
     # --- interactions ---
@@ -394,6 +405,27 @@ class ResultsScreen(QWidget):
     def _open_cover(self, job: Job) -> None:
         dlg = CoverLetterDialog(self._resume_text, job, self._skills, self)
         dlg.exec_()
+
+    def _parsed_resume(self):
+        """Resolve a ParsedResume for tailoring/breakdown: the saved default if
+        any, else a quick local parse of the current résumé text (no LLM call)."""
+        if getattr(self, "_parsed_cache", None) is not None:
+            return self._parsed_cache
+        from core.resume import default_resume, extract_structured
+        got = default_resume()
+        if got:
+            self._parsed_cache = got["parsed"]
+        else:
+            self._parsed_cache, _ = extract_structured(self._resume_text, use_llm=False)
+        return self._parsed_cache
+
+    def _open_tailor(self, job: Job) -> None:
+        from ui.dialogs_resume import TailorDialog
+        TailorDialog(self._parsed_resume(), job, self).exec_()
+
+    def _open_breakdown(self, job: Job) -> None:
+        from ui.dialogs_resume import RubricDialog
+        RubricDialog(self._parsed_resume(), job, parent=self).exec_()
 
     def _on_search(self, text: str) -> None:
         self._query = text

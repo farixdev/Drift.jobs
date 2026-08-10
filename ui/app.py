@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
 from ui import styles
 from ui.dialogs import SettingsDialog
 from ui.screen_design_system import DesignSystemScreen
+from ui.screen_resume import ResumeScreen
 from ui.screen_results import ResultsScreen
 from ui.screen_run import RunScreen
 from ui.screen_search_builder import SearchBuilderScreen
@@ -40,16 +41,20 @@ class DriftApp(QMainWindow):
         self.results_screen = ResultsScreen()
         self.design_screen = DesignSystemScreen()
         self.builder_screen = SearchBuilderScreen()
+        self.resume_screen = ResumeScreen()
 
         self.stack.addWidget(self.setup_screen)
         self.stack.addWidget(self.scan_screen)
         self.stack.addWidget(self.results_screen)
         self.stack.addWidget(self.design_screen)
         self.stack.addWidget(self.builder_screen)
+        self.stack.addWidget(self.resume_screen)
 
         self.builder_screen.back.connect(self._go_setup)
         self.builder_screen.run_search.connect(self._run_from_builder)
         self.builder_screen.topbar.settings_clicked.connect(self._open_settings)
+        self.resume_screen.back.connect(self._go_setup)
+        self.resume_screen.topbar.settings_clicked.connect(self._open_settings)
 
         # Design-system gallery (Ctrl+Shift+D) and command palette (Ctrl+K).
         QShortcut(QKeySequence("Ctrl+Shift+D"), self,
@@ -75,6 +80,7 @@ class DriftApp(QMainWindow):
         CommandPalette([
             ("Go to setup / new scan", self._go_setup),
             ("Open search builder", self._open_search_builder),
+            ("Open résumé editor", lambda: self.stack.setCurrentWidget(self.resume_screen)),
             ("Open design system", lambda: self.stack.setCurrentWidget(self.design_screen)),
             ("Toggle light / dark theme", theme().toggle),
             ("Open settings", self._open_settings),

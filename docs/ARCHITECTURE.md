@@ -251,3 +251,44 @@ after dedup and before ranking. The engine's widening now relaxes nice-to-have
 keywords → date window → location mode → country → salary floor, reporting each
 step. The builder screen is reachable from setup ("Advanced search builder →") and
 the ⌘K palette.
+
+---
+
+## Resume module (Phase 4)
+
+```
+core/resume/  schema · extract · keywords · rubric · ats · generate · export · store
+ui/screen_resume.py · ui/dialogs_resume.py (Tailor + Rubric breakdown)
+```
+
+**Parsing** (`extract`): layout-aware text extraction (core.parser) → LLM
+schema-validated structured extraction (contact, summary, experience[],
+education[], skills{}, certifications, projects, links), with a local backfill
+for contact/skills so a weak model or offline run still yields usable data, and an
+honest low-text gate (warns instead of faking OCR — no OCR engine ships). The
+parsed result is shown in an **editable form** whose corrections persist.
+
+**Keyword intelligence** (`keywords`): weighted skills, a synonym/variant
+expansion map (k8s↔Kubernetes) that bridges to search, and detected target
+titles + seniority surfaced as editable suggestions.
+
+**Transparent rubric** (`rubric` + `ats`): scores a résumé against a job across
+eight dimensions (hard-skill coverage, years, seniority, domain, education,
+location/work-mode, salary, ATS mechanics), each with a 0–100 score + plain detail
+and a weighted composite; dimensions with no evidence are neutral (excluded), never
+guessed. Returns `missing[]` / `strengths[]`. Shown in the breakdown dialog.
+
+**Generation** (`generate`): tailored bullets that surface matched keywords —
+enforced honest by a system prompt, a **safety net** that reverts any rewrite
+introducing a number/metric or a skill not in the résumé (spelled-out numbers and
+dotted skills included), and a **diff view** for per-bullet approval. Plus a gap
+report and PDF/DOCX/plaintext-ATS export (PyMuPDF + python-docx, no new deps).
+
+**Persistence** (`store`): multiple résumés (one default, invariant-preserving),
+persisted corrections, and tailored variants in `resume_version`.
+
+**Quality:** built with live LLM verification, then hardened by an adversarial
+review workflow (26 agents) that surfaced 20 confirmed defects — all high/medium
+fixed with regression tests, including null-array crashes in `from_dict`, a
+weight-vs-count coverage bug, dead-code degree logic, and the safety-net gaps
+above.
