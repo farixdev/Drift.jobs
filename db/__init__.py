@@ -266,3 +266,37 @@ def get_cover_letter(job_id: str) -> str:
 def mark_jobs_seen(jobs: list) -> None:
     """Back-compat shim for 1.x callers."""
     record_seen([j for j in jobs if isinstance(j, Job)])
+
+
+# --------------------------------------------------------------------------- #
+# Generic settings store (the `setting` table) — used by the AI layer and later
+# phases for JSON-valued config (routing, pricing, cache TTL, feature flags).
+# --------------------------------------------------------------------------- #
+def get_setting(key: str, default=None):
+    import json as _json
+    with closing(connect()) as conn:
+        row = conn.execute(
+            "SELECT value_json FROM setting WHERE key=?", (key,)
+        ).fetchone()
+    if row is None:
+        return default
+    try:
+        return _json.loads(row["value_json"])
+    except (ValueError, TypeError):
+        return default
+
+
+def set_setting(key: str, value) -> None:
+    import json as _json
+    payload = _json.dumps(value)
+    with closing(connect()) as conn, conn:
+        conn.execute(
+            """
+            INSERT INTO setting(key, value_json, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(key) DO UPDATE SET
+                value_json = excluded.value_json,
+                updated_at = datetime('now')
+            """,
+            (key, payload),
+        )

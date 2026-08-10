@@ -11,8 +11,11 @@ PyQt5==5.15.11
 # --- config / env ---
 python-dotenv==1.2.2
 
-# --- AI (Groq via OpenAI-compatible client; Phase 3 generalizes this) ---
-openai==2.38.0
+# --- AI provider layer (Phase 3) ---
+# Providers are called over raw HTTP (requests) for full control of retries,
+# host assertion, and structured output — no vendor SDKs. cryptography backs the
+# AES-256-GCM keystore fallback; on Windows the OS keychain (pywin32) is primary.
+cryptography==48.0.0
 
 # --- resume parsing ---
 pdfplumber==0.11.9

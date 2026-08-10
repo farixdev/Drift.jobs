@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import sqlite3
 
-from db.migrations import m001_initial_schema, m002_import_legacy
+from db.migrations import (
+    m001_initial_schema,
+    m002_import_legacy,
+    m003_ai_cache_usage,
+)
 
 # Ordered by VERSION. New migrations go on the end.
-ALL_MIGRATIONS = [m001_initial_schema, m002_import_legacy]
+ALL_MIGRATIONS = [m001_initial_schema, m002_import_legacy, m003_ai_cache_usage]
 
 LATEST_VERSION = max(m.VERSION for m in ALL_MIGRATIONS)
 

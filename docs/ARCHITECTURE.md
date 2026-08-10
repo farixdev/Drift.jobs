@@ -1,7 +1,7 @@
 # Drift — Architecture
 
 Living document. Each phase adds its section; this is not a snapshot of a
-finished system. Current phases documented: **2 (data layer)**.
+finished system. Current phases documented: **2 (data layer)**, **3 (AI layer)**.
 
 ---
 
@@ -100,3 +100,35 @@ schema/index shape, FTS5 indexing + delete-trigger consistency, FK cascades, the
 legacy import (state preservation, backup creation, orphan flagging), and every
 back-compat shim including the full worker→results call sequence. All run against
 a throwaway `tmp_path` DB; the real `db/jobs.db` is never touched.
+
+---
+
+## AI provider layer (Phase 3)
+
+Bring-your-own-key, 8 providers, single interface, called over raw HTTP. Full
+detail (live verification, key-safety rules, routing) is in
+[docs/AI_PROVIDERS.md](AI_PROVIDERS.md); the module map and integration points:
+
+```
+core/ai/            registry, errors, types, http, base, openai_compat, native,
+                    factory, keystore, models_fallback, routing, cost, cache,
+                    budget, manager
+core/ai_engine.py   thin task-shaped facade (parse_resume / score_jobs_batch /
+                    generate_cover_letter) — same 1.x surface, now over LLMManager
+```
+
+**Integration.** `core/ai_engine.py` keeps the exact functions `matcher.py`,
+`ui/worker.py`, and `ui/dialogs.py` already call, so no UI or matcher code
+changed. Under the hood each function is a task: `parse_resume` → `resume_parse`,
+`score_jobs_batch` → `job_rerank`, `generate_cover_letter` → `cover_letter`. The
+old Groq-only OpenAI client is gone; Groq is one provider behind the router and
+remains the default route, so behaviour is preserved.
+
+**Storage tie-ins.** Migration `m003` adds `llm_cache` (prompt-response cache) and
+`llm_usage` (cost ledger). Routing, pricing, and cache config are JSON values in
+the `setting` table via `db.get_setting` / `db.set_setting`. Keys live in the OS
+keychain, never in the database.
+
+**Verified live.** All 8 model endpoints probed 2026-08-10; the full stack
+(list_models → structured completion with schema repair → cost metering) was run
+end-to-end against Groq with the install's real key.
