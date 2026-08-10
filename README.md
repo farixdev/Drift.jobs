@@ -32,10 +32,19 @@ you don't configure.
 - **Track applications.** A Kanban pipeline with funnel metrics and export.
 
 ## Quick start
+
+**Windows — one click:** double-click **`run.bat`**. On first run it creates the
+virtual environment, installs dependencies, and launches the app; after that it
+just launches.
+
+**Manual (any OS):**
 ```bash
-pip install -r requirements-dev.txt
-python main.py
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt   # macOS/Linux: .venv/bin/python
+.venv\Scripts\python main.py
 ```
+
+Then:
 1. Upload a résumé (Search screen).
 2. Pick sources and a match threshold, or open the **Advanced search builder** for
    full criteria (role, location, salary, seniority, freshness, volume, …).
